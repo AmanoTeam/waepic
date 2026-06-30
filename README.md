@@ -2,6 +2,12 @@
 
 Unofficial wrapper for WhatsApp Web API, built with Rust. This project is in an early stage.
 
+
+## Disclaimer
+
+This is an unofficial, open-source reimplementation.
+Using custom WhatsApp clients may violate Meta's Terms of Service and could result in account suspension.
+
 ## Acknowledgements
 
 - [Baileys](https://github.com/WhiskeySockets/Baileys) - TypeScript implementation
