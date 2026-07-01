@@ -1,35 +1,13 @@
-use std::time::Duration;
-
 use waproto::whatsapp::device_props::PlatformType;
-
-/// Default WhatsApp Web's Websocket URL.
-const DEFAULT_WEBSOCKET_URL: &str = "wss://web.whatsapp.com/ws/chat";
+use waepic_connection::ConnectionConfig;
 
 /// Configuration for a WhatsApp client.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ClientConfiguration {
     /// Device properties sent during the WhatsApp handshake.
     pub device: DeviceProps,
-    /// Whether to automatically reconnect when the WebSocket drops.
-    pub auto_reconnect: bool,
-    /// Interval between keepalive ping stanzas.
-    pub keepalive_interval: Duration,
-    /// Maximum number of reconnection attempts before giving up.
-    pub max_reconnect_attempts: u32,
-    /// WebSocket URL for the WhatsApp connection.
-    pub websocket_url: String,
-}
-
-impl Default for ClientConfiguration {
-    fn default() -> Self {
-        Self {
-            device: DeviceProps::default(),
-            auto_reconnect: true,
-            keepalive_interval: Duration::from_secs(20),
-            max_reconnect_attempts: 10,
-            websocket_url: DEFAULT_WEBSOCKET_URL.to_string(),
-        }
-    }
+    /// Connection-layer configuration (WebSocket URL, reconnect, keepalive).
+    pub connection: ConnectionConfig,
 }
 
 /// Device properties sent during WhatsApp handshake.
@@ -88,6 +66,8 @@ impl Default for AppVersion {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use waproto::whatsapp::device_props::PlatformType;
 
     use super::*;
@@ -96,9 +76,9 @@ mod tests {
     fn default_config() {
         let config = ClientConfiguration::default();
 
-        assert!(config.auto_reconnect);
-        assert_eq!(config.keepalive_interval, Duration::from_secs(20));
-        assert_eq!(config.max_reconnect_attempts, 10);
+        assert!(config.connection.auto_reconnect);
+        assert_eq!(config.connection.keepalive_interval, Duration::from_secs(20));
+        assert_eq!(config.connection.max_reconnect_attempts, 10);
     }
 
     #[test]

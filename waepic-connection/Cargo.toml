@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+wacore.workspace = true
+wacore-binary.workspace = true
+
 anyhow.workspace = true
 async-broadcast.workspace = true
 async-channel.workspace = true
@@ -15,22 +18,20 @@ async-net.workspace = true
 async-trait.workspace = true
 async-tungstenite.workspace = true
 bytes.workspace = true
+futures-channel.workspace = true
 futures-io.workspace = true
 futures-timer.workspace = true
 futures-util.workspace = true
 http.workspace = true
 rustls.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
-wacore.workspace = true
-wacore-binary.workspace = true
-webpki-roots.workspace = true
-
 tokio = {
   workspace = true,
   features = ["net", "rt", "sync", "time"],
   optional = true
 }
+tracing.workspace = true
+webpki-roots.workspace = true
 
 [dev-dependencies]
 compio.workspace = true

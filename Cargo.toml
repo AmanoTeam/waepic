@@ -27,6 +27,7 @@ async-trait = "0.1"
 async-tungstenite = { version = "0.34", default-features = false }
 bytes = "1.12"
 compio = "0.19"
+futures-channel = "0.3"
 futures-io = "0.3"
 futures-timer = "3.0"
 futures-util = "0.3"

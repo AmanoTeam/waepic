@@ -18,7 +18,9 @@ pub mod frame;
 pub mod noise_socket;
 pub mod transport;
 
+pub use connection::{Connection, ConnectionConfig, ConnectionHandle, ConnectionRunner, RawEvent};
 pub use error::ConnectionError;
+pub use noise_socket::NoiseSocket;
 pub use transport::WebSocketTransportFactory;
 
 /// A `Result` alias for the connection layer.

@@ -2499,6 +2499,7 @@ version = "0.1.0"
 dependencies = [
  "thiserror",
  "wacore-binary",
+ "waepic-connection",
  "waproto",
 ]
 
@@ -2516,6 +2517,7 @@ dependencies = [
  "async-tungstenite",
  "bytes",
  "compio",
+ "futures-channel",
  "futures-io",
  "futures-timer",
  "futures-util",
