@@ -6,13 +6,16 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 async-broadcast.workspace = true
 async-channel.workspace = true
-async-io.workspace = true
+async-global-executor.workspace = true
 async-lock.workspace = true
+async-net.workspace = true
 async-trait.workspace = true
 async-tungstenite.workspace = true
 bytes.workspace = true
+futures-io.workspace = true
 futures-timer.workspace = true
 futures-util.workspace = true
 http.workspace = true
@@ -31,20 +34,20 @@ tokio = {
 
 [dev-dependencies]
 compio.workspace = true
+tracing-subscriber.workspace = true
 
 [features]
-default = ["rustls"]
+default = ["rustls", "smol"]
+
+smol = ["async-tungstenite/smol-runtime"]
+tokio = ["async-tungstenite/tokio-runtime", "dep:tokio"]
 
 # TLS implementation (enables both smol and tokio variants)
 native-tls = [
   "async-tungstenite/smol-native-tls",
-  "async-tungstenite/smol-runtime",
   "async-tungstenite/tokio-native-tls",
 ]
 rustls = [
   "async-tungstenite/futures-rustls-webpki-roots",
-  "async-tungstenite/smol-runtime",
   "async-tungstenite/tokio-rustls-webpki-roots",
 ]
-
-tokio = ["async-tungstenite/tokio-runtime", "dep:tokio"]

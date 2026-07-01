@@ -19,6 +19,7 @@ pub mod noise_socket;
 pub mod transport;
 
 pub use error::ConnectionError;
+pub use transport::WebSocketTransportFactory;
 
 /// A `Result` alias for the connection layer.
 pub type Result<T> = std::result::Result<T, ConnectionError>;
