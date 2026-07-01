@@ -1,14 +1,57 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+#![deny(clippy::all)]
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+//! # waepic-client
+//!
+//! A high-level Rust client library for WhatsApp Web, built on top of
+//! [`wacore`] and [`wacore_binary`].
+//!
+//! ## Overview
+//!
+//! waepic-client provides a ergonomic API for connecting to WhatsApp's
+//! WebSocket servers, pairing devices via QR code or phone number, sending
+//! and receiving messages, and handling real-time updates such as receipts,
+//! presence, and history sync.
+//!
+//! ## Quick start
+//!
+//! ```ignore
+//! use std::sync::Arc;
+//!
+//! use waepic_client::{Client, ClientConfiguration, RawEvent};
+//! use waepic_session::MemorySession;
+//!
+//! # async fn main() -> waepic_client::error::Result<()> {
+//! let backend = /* obtain a wacore Backend */;
+//! let session = Arc::new(MemorySession::new());
+//! let config = ClientConfiguration::default();
+//!
+//! let (client, raw_rx) = Client::connect(backend, session, config);
+//! let mut updates = client.stream_updates(raw_rx);
+//!
+//! while let Some(update) = updates.next().await {
+//!     println!("Update: {update:?}");
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Modules
+//!
+//! - [`client`] - The main [`Client`] struct and its API methods.
+//! - [`config`] - Client configuration (device properties, reconnect settings).
+//! - [`connection`] - WebSocket transport, Noise handshake, and read loop.
+//! - [`error`] - Error types for all waepic operations.
+//! - [`types`] - High-level types: [`Chat`], [`Message`], [`Update`], and more.
+//!
+//! [`Client`]: client::Client
+//! [`Chat`]: types::Chat
+//! [`Message`]: types::Message
+//! [`Update`]: types::Update
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+/// Error types for all client operations.
+pub mod error;
+
+pub use error::{AuthError, ClientError, IqError, SendError};
+
+/// Convenient [`Result`] alias for client operations.
+pub type Result<T> = std::result::Result<T, ClientError>;

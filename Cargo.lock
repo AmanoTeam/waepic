@@ -1018,6 +1018,10 @@ dependencies = [
 [[package]]
 name = "waepic-client"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "wacore-binary",
+]
 
 [[package]]
 name = "waepic-session"
