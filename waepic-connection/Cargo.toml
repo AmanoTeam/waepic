@@ -23,6 +23,7 @@ futures-io.workspace = true
 futures-timer.workspace = true
 futures-util.workspace = true
 http.workspace = true
+prost.workspace = true
 rustls.workspace = true
 thiserror.workspace = true
 tokio = {

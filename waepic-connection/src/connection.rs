@@ -25,7 +25,7 @@ use futures_timer::Delay;
 use futures_util::future::{Either, select};
 use wacore::{
     iq::spec::IqSpec,
-    net::Transport,
+    net::{Transport, TransportEvent},
     request::{InfoQuery, InfoQueryType},
     store::traits::Backend,
 };
@@ -34,7 +34,7 @@ use wacore_binary::{
     node::{Attrs, NodeValue},
 };
 
-use crate::{ConnectionError, NoiseSocket, Result};
+use crate::{ConnectionError, NoiseSocket, Result, frame};
 
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
@@ -73,7 +73,7 @@ pub enum RawEvent {
 }
 
 #[allow(dead_code)]
-enum ConnectionCommand {
+pub(crate) enum ConnectionCommand {
     SendNode(Node),
     Disconnect,
 }
@@ -98,6 +98,7 @@ pub struct ConnectionRunner {
     config: ConnectionConfig,
     transport: Arc<Mutex<Option<Arc<dyn Transport>>>>,
     noise_socket: Arc<Mutex<Option<Arc<NoiseSocket>>>>,
+    transport_events: Arc<Mutex<Option<async_channel::Receiver<TransportEvent>>>>,
     is_connected: Arc<AtomicBool>,
     iq_waiters: Arc<Mutex<HashMap<String, oneshot::Sender<Result<Node>>>>>,
     #[allow(dead_code)]
@@ -141,6 +142,7 @@ impl Connection {
         let is_connected = Arc::new(AtomicBool::new(false));
         let transport = Arc::new(Mutex::new(None));
         let noise_socket = Arc::new(Mutex::new(None));
+        let transport_events = Arc::new(Mutex::new(None));
         let iq_waiters = Arc::new(Mutex::new(HashMap::new()));
         let iq_id_counter = Arc::new(AtomicU64::new(0));
         let logged_out = Arc::new(AtomicBool::new(false));
@@ -152,6 +154,7 @@ impl Connection {
             config: config.clone(),
             transport: Arc::clone(&transport),
             noise_socket: Arc::clone(&noise_socket),
+            transport_events: Arc::clone(&transport_events),
             is_connected: Arc::clone(&is_connected),
             iq_waiters: Arc::clone(&iq_waiters),
             iq_id_counter: Arc::clone(&iq_id_counter),
@@ -177,7 +180,77 @@ impl ConnectionRunner {
     /// Consumes `self`. Returns `Ok(())` on clean disconnect, or `Err` if
     /// the connection failed and auto-reconnect is disabled.
     pub async fn run(self) -> Result<()> {
-        todo!()
+        let fields = frame::RunnerFields {
+            cmd_rx: self.cmd_rx,
+            event_tx: self.event_tx,
+            backend: self.backend,
+            config: self.config,
+            transport: self.transport,
+            noise_socket: self.noise_socket,
+            transport_events: self.transport_events,
+            is_connected: self.is_connected,
+            iq_waiters: self.iq_waiters,
+            logged_out: self.logged_out,
+        };
+
+        let mut reconnect_attempt: u64 = 0;
+
+        loop {
+            if fields.logged_out.load(Ordering::SeqCst) {
+                tracing::info!("logged out, stopping connection runner");
+                return Ok(());
+            }
+
+            match frame::connect_once(&fields).await {
+                Ok(()) => {
+                    reconnect_attempt = 0;
+                    tracing::info!("connected successfully");
+                }
+                Err(e) => {
+                    tracing::warn!("Connect failed: {e:#}");
+                    if !fields.config.auto_reconnect || fields.logged_out.load(Ordering::SeqCst) {
+                        let _ = fields.event_tx.try_broadcast(RawEvent::Error(format!(
+                            "connect failed and auto_reconnect is disabled: {e}"
+                        )));
+                        return Err(e);
+                    }
+
+                    let delay = frame::fibonacci_backoff(reconnect_attempt);
+                    reconnect_attempt = reconnect_attempt.saturating_add(1);
+
+                    tracing::info!("reconnecting in {delay:?} (attempt {reconnect_attempt})");
+                    Delay::new(delay).await;
+                    continue;
+                }
+            }
+
+            let loop_result = frame::read_loop(&fields).await;
+
+            fields.is_connected.store(false, Ordering::SeqCst);
+            frame::cleanup_connection(&fields).await;
+
+            match loop_result {
+                Ok(()) => {
+                    let _ = fields.event_tx.try_broadcast(RawEvent::Disconnected);
+                    return Ok(());
+                }
+                Err(e) => {
+                    let _ = fields.event_tx.try_broadcast(RawEvent::Disconnected);
+                    if !fields.config.auto_reconnect || fields.logged_out.load(Ordering::SeqCst) {
+                        let _ = fields
+                            .event_tx
+                            .try_broadcast(RawEvent::Error(format!("disconnected: {e}")));
+                        return Err(e);
+                    }
+
+                    let delay = frame::fibonacci_backoff(reconnect_attempt);
+                    reconnect_attempt = reconnect_attempt.saturating_add(1);
+
+                    tracing::info!("reconnecting in {delay:?} (attempt {reconnect_attempt})");
+                    Delay::new(delay).await;
+                }
+            }
+        }
     }
 }
 
@@ -283,7 +356,7 @@ fn build_iq_node(info_query: &InfoQuery<'_>, id: &str) -> Node {
 }
 
 /// Timeout helper using `futures_timer::Delay`.
-async fn timeout<F: Future>(duration: Duration, future: F) -> Result<F::Output> {
+pub(crate) async fn timeout<F: Future>(duration: Duration, future: F) -> Result<F::Output> {
     let timer = Delay::new(duration);
     let future = Box::pin(future);
     futures_util::pin_mut!(timer);
