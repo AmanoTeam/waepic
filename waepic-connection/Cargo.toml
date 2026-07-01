@@ -1,0 +1,50 @@
+[package]
+name = "waepic-connection"
+
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-broadcast.workspace = true
+async-channel.workspace = true
+async-io.workspace = true
+async-lock.workspace = true
+async-trait.workspace = true
+async-tungstenite.workspace = true
+bytes.workspace = true
+futures-timer.workspace = true
+futures-util.workspace = true
+http.workspace = true
+rustls.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+wacore.workspace = true
+wacore-binary.workspace = true
+webpki-roots.workspace = true
+
+tokio = {
+  workspace = true,
+  features = ["net", "rt", "sync", "time"],
+  optional = true
+}
+
+[dev-dependencies]
+compio.workspace = true
+
+[features]
+default = ["rustls"]
+
+# TLS implementation (enables both smol and tokio variants)
+native-tls = [
+  "async-tungstenite/smol-native-tls",
+  "async-tungstenite/smol-runtime",
+  "async-tungstenite/tokio-native-tls",
+]
+rustls = [
+  "async-tungstenite/futures-rustls-webpki-roots",
+  "async-tungstenite/smol-runtime",
+  "async-tungstenite/tokio-rustls-webpki-roots",
+]
+
+tokio = ["async-tungstenite/tokio-runtime", "dep:tokio"]

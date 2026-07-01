@@ -1,5 +1,3 @@
-#![deny(clippy::all)]
-
 //! # waepic-client
 //!
 //! A high-level Rust client library for WhatsApp Web, built on top of
@@ -47,6 +45,8 @@
 //! [`Chat`]: types::Chat
 //! [`Message`]: types::Message
 //! [`Update`]: types::Update
+
+#![deny(clippy::all)]
 
 /// Client configuration: device properties, reconnect behavior, WebSocket URL.
 pub mod config;

@@ -1,5 +1,3 @@
-#![deny(clippy::all)]
-
 //! # waepic-session
 //!
 //! Session storage for chat and contact caching, separate from wacore's
@@ -23,6 +21,8 @@
 //!
 //! [`Session`]: session::Session
 //! [`MemorySession`]: memory::MemorySession
+
+#![deny(clippy::all)]
 
 pub mod chat;
 pub mod error;
