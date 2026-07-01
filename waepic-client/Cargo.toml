@@ -7,5 +7,6 @@ license.workspace = true
 
 [dependencies]
 wacore-binary.workspace = true
+waproto.workspace = true
 
 thiserror.workspace = true

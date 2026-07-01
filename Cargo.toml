@@ -12,6 +12,7 @@ waepic-client = { path = "waepic-client" }
 waepic-session = { path = "waepic-session" }
 
 wacore-binary = { version = "0.6", default-features = false }
+waproto = "0.6"
 
 async-lock = "3.4"
 compio = "0.19"

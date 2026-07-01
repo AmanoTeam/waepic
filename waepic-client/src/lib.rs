@@ -48,9 +48,12 @@
 //! [`Message`]: types::Message
 //! [`Update`]: types::Update
 
+/// Client configuration: device properties, reconnect behavior, WebSocket URL.
+pub mod config;
 /// Error types for all client operations.
 pub mod error;
 
+pub use config::ClientConfiguration;
 pub use error::{AuthError, ClientError, IqError, SendError};
 
 /// Convenient [`Result`] alias for client operations.
