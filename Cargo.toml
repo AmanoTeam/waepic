@@ -11,6 +11,12 @@ license = "MIT"
 waepic-client = { path = "waepic-client" }
 waepic-session = { path = "waepic-session" }
 
+wacore-binary = { version = "0.6", default-features = false }
+
+async-lock = "3.4"
+compio = "0.19"
+thiserror = "2.0"
+
 [profile.bench]
 inherits = "release"
 debug = 1

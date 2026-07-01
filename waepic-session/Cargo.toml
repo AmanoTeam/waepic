@@ -6,3 +6,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+wacore-binary.workspace = true
+
+async-lock.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+compio = { workspace = true, features = ["macros"] }
