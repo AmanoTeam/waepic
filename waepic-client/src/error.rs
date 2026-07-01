@@ -57,9 +57,6 @@ pub enum IqError {
     /// The server response did not match the expected format.
     #[error("unexpected response: {0}")]
     UnexpectedResponse(String),
-    /// The client is not connected to the server.
-    #[error("not connected")]
-    NotConnected,
     /// Failed to parse the server response.
     #[error("parse error: {0}")]
     ParseError(String),
@@ -68,9 +65,6 @@ pub enum IqError {
 /// Errors from sending messages or performing message operations.
 #[derive(Debug, thiserror::Error)]
 pub enum SendError {
-    /// The client is not logged in.
-    #[error("not logged in")]
-    NotLoggedIn,
     /// The request was invalid (e.g. empty message, bad JID).
     #[error("invalid request: {0}")]
     InvalidRequest(String),

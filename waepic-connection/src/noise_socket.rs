@@ -135,9 +135,9 @@ mod tests {
         let socket = NoiseSocket::new(write_cipher, read_cipher);
         socket.read_counter.store(u32::MAX, Ordering::SeqCst);
 
-        let mut buf = BytesMut::from(&b"test"[..]);
+        let mut buffer = BytesMut::from(&b"test"[..]);
         let err = socket
-            .decrypt_frame(&mut buf)
+            .decrypt_frame(&mut buffer)
             .expect_err("exhausted counter must error");
         assert!(err.to_string().contains("read counter exhausted"));
     }
