@@ -7,9 +7,15 @@ license.workspace = true
 
 [dependencies]
 waepic-connection.workspace = true
+waepic-session.workspace = true
 
 wacore.workspace = true
 wacore-binary.workspace = true
 waproto.workspace = true
 
+async-broadcast.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+waepic-connection.workspace = true

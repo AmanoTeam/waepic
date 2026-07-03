@@ -2497,10 +2497,13 @@ dependencies = [
 name = "waepic-client"
 version = "0.1.0"
 dependencies = [
+ "async-broadcast",
  "thiserror",
+ "tracing",
  "wacore",
  "wacore-binary",
  "waepic-connection",
+ "waepic-session",
  "waproto",
 ]
 

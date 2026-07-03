@@ -8,7 +8,7 @@ pub struct Group {
     jid: Jid,
     subject: Option<String>,
     #[allow(dead_code)]
-    pub(crate) client: Client,
+    client: Client,
 }
 
 impl Group {

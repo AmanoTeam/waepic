@@ -13,6 +13,7 @@ pub use wacore::types::message::MessageInfo;
 pub struct Message {
     raw: waproto::whatsapp::Message,
     info: MessageInfo,
+    #[allow(dead_code)]
     client: Client,
     chat: Chat,
 }
@@ -65,7 +66,7 @@ impl Message {
     /// For outgoing messages this returns the current user's own chat
     /// representation; for incoming messages it returns the peer who sent it.
     pub fn sender(&self) -> Chat {
-        self.client.chat_from_jid(self.info.source.sender.clone())
+        self.client.chat(self.info.source.sender.clone())
     }
 
     /// Unix timestamp (seconds) when the message was originally sent.

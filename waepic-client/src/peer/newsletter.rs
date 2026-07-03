@@ -8,7 +8,7 @@ pub struct Newsletter {
     jid: Jid,
     name: Option<String>,
     #[allow(dead_code)]
-    pub(crate) client: Client,
+    client: Client,
 }
 
 impl Newsletter {

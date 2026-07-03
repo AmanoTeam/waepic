@@ -68,6 +68,7 @@ pub(crate) struct RunnerFields {
 /// On success the transport, NoiseSocket, and transport event receiver are
 /// stored in the shared mutexes, `is_connected` is set to `true`, and a
 /// [`RawEvent::Connected`] is broadcast.
+#[tracing::instrument(skip(fields))]
 pub(crate) async fn connect_once(fields: &RunnerFields) -> Result<()> {
     let device = fields
         .backend
@@ -124,6 +125,7 @@ pub(crate) async fn connect_once(fields: &RunnerFields) -> Result<()> {
 }
 
 /// Perform the Noise XX handshake with the WhatsApp server.
+#[tracing::instrument(skip(device, transport, transport_events))]
 async fn perform_xx_handshake(
     device: &wacore::store::Device,
     transport: &Arc<dyn Transport>,
@@ -184,6 +186,7 @@ async fn perform_xx_handshake(
 ///
 /// Returns `Ok(())` on clean disconnect (command or channel close), or `Err`
 /// on transport error.
+#[tracing::instrument(skip(fields))]
 pub(crate) async fn read_loop(fields: &RunnerFields) -> Result<()> {
     let transport = {
         let t = fields.transport.lock().await;
@@ -280,6 +283,7 @@ pub(crate) async fn read_loop(fields: &RunnerFields) -> Result<()> {
 }
 
 /// Decrypt, unpack, and route a single incoming frame.
+#[tracing::instrument(skip(transport, noise_socket, event_tx, iq_waiters, logged_out))]
 pub(crate) async fn process_incoming_frame(
     transport: &Arc<dyn Transport>,
     noise_socket: &NoiseSocket,
@@ -392,6 +396,7 @@ pub(crate) async fn process_incoming_frame(
 }
 
 /// Marshal a node, encrypt it, and send it through the transport.
+#[tracing::instrument(skip(transport, noise_socket))]
 pub(crate) async fn handle_send_node(
     transport: &Arc<dyn Transport>,
     noise_socket: &NoiseSocket,
@@ -406,6 +411,7 @@ pub(crate) async fn handle_send_node(
 }
 
 /// Send a keepalive ping to the server.
+#[tracing::instrument(skip(transport, noise_socket))]
 async fn send_keepalive(transport: &Arc<dyn Transport>, noise_socket: &NoiseSocket) -> Result<()> {
     let mut attrs = Attrs::with_capacity(3);
     attrs.push("to", NodeValue::String("s.whatsapp.net".into()));
@@ -426,6 +432,7 @@ async fn send_keepalive(transport: &Arc<dyn Transport>, noise_socket: &NoiseSock
 ///
 /// Drains pending IQ waiters with [`ConnectionError::NotConnected`],
 /// disconnects the transport, and clears the noise socket and event receiver.
+#[tracing::instrument(skip(fields))]
 pub(crate) async fn cleanup_connection(fields: &RunnerFields) {
     let mut waiters = fields.iq_waiters.lock().await;
     for (_, tx) in waiters.drain() {

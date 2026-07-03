@@ -108,10 +108,7 @@ pub struct ConnectionRunner {
     logged_out: Arc<AtomicBool>,
 }
 
-/// Cheap-to-clone handle for sending nodes and IQs through the connection.
-///
-/// Created by [`Connection::new`] alongside the [`ConnectionRunner`].
-/// Safe to share across tasks via [`Clone`].
+/// Handle for sending nodes and IQs through the connection.
 #[derive(Clone)]
 pub struct ConnectionHandle {
     cmd_tx: async_channel::Sender<ConnectionCommand>,
@@ -129,6 +126,7 @@ impl Connection {
     /// connection lifecycle. The event receiver yields [`RawEvent`]s. The
     /// handle is used to send nodes and IQs.
     #[allow(clippy::new_ret_no_self)]
+    #[tracing::instrument(skip(backend))]
     pub fn new(
         backend: Arc<dyn Backend>,
         config: ConnectionConfig,
@@ -179,6 +177,7 @@ impl ConnectionRunner {
     ///
     /// Consumes `self`. Returns `Ok(())` on clean disconnect, or `Err` if
     /// the connection failed and auto-reconnect is disabled.
+    #[tracing::instrument(skip(self))]
     pub async fn run(self) -> Result<()> {
         let fields = frame::RunnerFields {
             cmd_rx: self.cmd_rx,
@@ -321,21 +320,6 @@ impl ConnectionHandle {
     fn next_iq_id(&self) -> String {
         let id = self.iq_id_counter.fetch_add(1, Ordering::Relaxed);
         format!("waepic_{id}")
-    }
-
-    /// Create a stub handle for testing (no real connection).
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub(crate) fn test_stub() -> Self {
-        let (cmd_tx, _cmd_rx) = unbounded();
-        Self {
-            cmd_tx,
-            is_connected: Arc::new(AtomicBool::new(false)),
-            transport: Arc::new(Mutex::new(None)),
-            noise_socket: Arc::new(Mutex::new(None)),
-            iq_waiters: Arc::new(Mutex::new(HashMap::new())),
-            iq_id_counter: Arc::new(AtomicU64::new(0)),
-        }
     }
 }
 
