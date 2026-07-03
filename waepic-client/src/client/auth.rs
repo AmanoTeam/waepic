@@ -19,15 +19,13 @@ pub enum LoginStatus {
 }
 
 impl Client {
-    /// Check whether the backend has a stored device with a phone number,
+    /// Check whether the session has a stored device with a phone number,
     /// which indicates a completed pairing flow.
     #[tracing::instrument(skip(self))]
     pub async fn is_authorized(&self) -> Result<bool> {
-        let Some(backend) = self.inner.backend.as_ref() else {
-            return Ok(false);
-        };
-
-        let device = backend
+        let device = self
+            .inner
+            .session
             .load()
             .await
             .map_err(|e| ClientError::Internal(format!("failed to load device: {e}")))?;
@@ -49,13 +47,9 @@ impl Client {
     /// Return the current [`LoginStatus`] by inspecting the stored device.
     #[tracing::instrument(skip(self))]
     pub async fn check_login_status(&self) -> Result<LoginStatus> {
-        let backend = self
+        let device = self
             .inner
-            .backend
-            .as_ref()
-            .ok_or_else(|| ClientError::Internal("no backend configured".into()))?;
-
-        let device = backend
+            .session
             .load()
             .await
             .map_err(|e| ClientError::Internal(format!("failed to load device: {e}")))?;
@@ -83,13 +77,9 @@ impl Client {
     /// when the client is not paired.
     #[tracing::instrument(skip(self))]
     pub async fn get_me(&self) -> Result<Chat> {
-        let backend = self
+        let device = self
             .inner
-            .backend
-            .as_ref()
-            .ok_or_else(|| ClientError::Internal("no backend configured".into()))?;
-
-        let device = backend
+            .session
             .load()
             .await
             .map_err(|e| ClientError::Internal(format!("failed to load device: {e}")))?;

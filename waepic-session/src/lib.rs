@@ -1,14 +1,13 @@
 //! # waepic-session
 //!
-//! Session storage for chat and contact caching, separate from wacore's
-//! protocol-level `Backend` trait.
+//! Session storage combining protocol-level persistence ([`Backend`]) with
+//! chat and contact caching ([`Session`]).
 //!
 //! ## Overview
 //!
-//! `waepic-session` provides a [`Session`] trait for caching chat metadata
-//! (JIDs, names, types) and contact lists. The included [`MemorySession`]
-//! is suitable for testing and simple use cases; production applications
-//! should implement [`Session`] with persistent storage.
+//! [`Session`] extends [`Backend`] so a single value serves both protocol
+//! persistence and chat/contact caching. The included [`MemorySession`]
+//! wraps [`wacore::store::InMemoryBackend`] and adds in-memory chat storage.
 //!
 //! ## Quick start
 //!
@@ -20,6 +19,7 @@
 //! ```
 //!
 //! [`Session`]: session::Session
+//! [`Backend`]: session::Backend
 //! [`MemorySession`]: memory::MemorySession
 
 #![deny(clippy::all)]
@@ -32,7 +32,7 @@ pub mod session;
 pub use chat::ChatEntry;
 pub use error::SessionError;
 pub use memory::MemorySession;
-pub use session::Session;
+pub use session::{Backend, Session};
 
 /// Convenient [`Result`] alias for session operations.
 pub type Result<T> = std::result::Result<T, SessionError>;

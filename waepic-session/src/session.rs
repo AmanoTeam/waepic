@@ -6,8 +6,13 @@ use wacore_binary::Jid;
 
 use crate::{ChatEntry, Result};
 
+pub use wacore::store::traits::Backend;
+
 /// Session storage trait for peer/chat caching.
-pub trait Session: Send + Sync {
+///
+/// Extends [`Backend`] so a single session value serves both protocol-level
+/// persistence and chat/contact caching.
+pub trait Session: Backend {
     /// Look up a cached chat by JID.
     fn get_chat(
         &self,

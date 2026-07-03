@@ -2,7 +2,6 @@ pub mod auth;
 
 use std::{fmt, sync::Arc};
 
-use wacore::store::traits::Backend;
 use wacore_binary::{Jid, JidExt, Server};
 use waepic_connection::{Connection, ConnectionHandle, ConnectionRunner, RawEvent};
 use waepic_session::Session;
@@ -30,7 +29,6 @@ pub(crate) struct ClientInner {
     pub(crate) handle: ConnectionHandle,
     pub(crate) session: Arc<dyn Session>,
     pub(crate) config: ClientConfiguration,
-    pub(crate) backend: Option<Arc<dyn Backend>>,
     pub(crate) raw_rx: Option<async_broadcast::Receiver<RawEvent>>,
 }
 
@@ -46,28 +44,25 @@ impl Client {
                 handle,
                 session,
                 config,
-                backend: None,
                 raw_rx: None,
             }),
         }
     }
 
     /// Create a new `Client` by establishing a connection.
-    #[tracing::instrument(skip(backend, session))]
+    #[tracing::instrument(skip(session))]
     pub fn connect(
-        backend: Arc<dyn Backend>,
         session: Arc<dyn Session>,
         config: ClientConfiguration,
     ) -> (Self, async_broadcast::Receiver<RawEvent>, ConnectionRunner) {
         let (runner, raw_rx, handle) =
-            Connection::new(Arc::clone(&backend), config.connection.clone());
+            Connection::new(session.clone(), config.connection.clone());
 
         let client = Self {
             inner: Arc::new(ClientInner {
                 handle,
                 session,
                 config,
-                backend: Some(backend),
                 raw_rx: Some(raw_rx.clone()),
             }),
         };
