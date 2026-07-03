@@ -146,4 +146,29 @@ impl Client {
             _ => Chat::Other(OtherChat::new(jid, self.clone())),
         }
     }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn disconnect(&self) -> Result<()> {
+        self.inner.handle.disconnect().await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn logout(&self) -> Result<()> {
+        let device = self.inner.device.read().await;
+        if let Some(pn) = &device.pn {
+            use wacore::iq::devices::RemoveCompanionDeviceSpec;
+            if let Err(e) = self
+                .inner
+                .handle
+                .send_iq(RemoveCompanionDeviceSpec::new(pn))
+                .await
+            {
+                tracing::warn!("failed to send logout IQ: {e}");
+            }
+        }
+        drop(device);
+
+        self.disconnect().await
+    }
 }
