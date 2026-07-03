@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod pair;
 
 use std::{fmt, sync::Arc};
 
@@ -55,8 +56,7 @@ impl Client {
         session: Arc<dyn Session>,
         config: ClientConfiguration,
     ) -> (Self, async_broadcast::Receiver<RawEvent>, ConnectionRunner) {
-        let (runner, raw_rx, handle) =
-            Connection::new(session.clone(), config.connection.clone());
+        let (runner, raw_rx, handle) = Connection::new(session.clone(), config.connection.clone());
 
         let client = Self {
             inner: Arc::new(ClientInner {

@@ -14,8 +14,16 @@ wacore-binary.workspace = true
 waproto.workspace = true
 
 async-broadcast.workspace = true
+async-channel.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+futures-timer.workspace = true
+futures-util.workspace = true
+prost.workspace = true
+rand.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+compio.workspace = true
 waepic-connection.workspace = true
