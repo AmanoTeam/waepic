@@ -34,7 +34,7 @@ pub mod peer;
 /// Event types emitted by the client: [`Update`] and supporting structs.
 pub mod update;
 
-pub use client::Client;
+pub use client::{Client, auth::LoginStatus};
 pub use config::ClientConfiguration;
 pub use error::{AuthError, ClientError, IqError, SendError};
 pub use message::{InputMessage, Message, MessageInfo};

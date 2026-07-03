@@ -1,3 +1,5 @@
+pub mod auth;
+
 use std::{fmt, sync::Arc};
 
 use wacore::store::traits::Backend;
