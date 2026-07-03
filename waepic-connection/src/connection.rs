@@ -94,6 +94,10 @@ pub struct Connection {
 pub struct ConnectionRunner {
     cmd_rx: async_channel::Receiver<ConnectionCommand>,
     event_tx: async_broadcast::Sender<RawEvent>,
+    /// Keeps the broadcast channel alive so events aren't lost when no
+    /// external receivers exist yet. Never read from.
+    #[allow(dead_code)]
+    event_rx: async_broadcast::Receiver<RawEvent>,
     backend: Arc<dyn Backend>,
     config: ConnectionConfig,
     transport: Arc<Mutex<Option<Arc<dyn Transport>>>>,
@@ -120,11 +124,12 @@ pub struct ConnectionHandle {
 }
 
 impl Connection {
-    /// Create a new connection, returning the runner, event receiver, and handle.
+    /// Create a new connection, returning the runner, event sender, and handle.
     ///
     /// The runner should be spawned (e.g. via `tokio::spawn`) to drive the
-    /// connection lifecycle. The event receiver yields [`RawEvent`]s. The
-    /// handle is used to send nodes and IQs.
+    /// connection lifecycle. The event sender can be used to create new
+    /// receivers via [`async_broadcast::Sender::new_receiver`]. The handle is
+    /// used to send nodes and IQs.
     #[allow(clippy::new_ret_no_self)]
     #[tracing::instrument(skip(backend))]
     pub fn new(
@@ -132,7 +137,7 @@ impl Connection {
         config: ConnectionConfig,
     ) -> (
         ConnectionRunner,
-        async_broadcast::Receiver<RawEvent>,
+        async_broadcast::Sender<RawEvent>,
         ConnectionHandle,
     ) {
         let (cmd_tx, cmd_rx) = unbounded();
@@ -148,6 +153,7 @@ impl Connection {
         let runner = ConnectionRunner {
             cmd_rx,
             event_tx: event_tx.clone(),
+            event_rx,
             backend: Arc::clone(&backend),
             config: config.clone(),
             transport: Arc::clone(&transport),
@@ -168,7 +174,7 @@ impl Connection {
             iq_id_counter,
         };
 
-        (runner, event_rx, handle)
+        (runner, event_tx, handle)
     }
 }
 
@@ -321,7 +327,6 @@ impl ConnectionHandle {
         let id = self.iq_id_counter.fetch_add(1, Ordering::Relaxed);
         format!("waepic_{id}")
     }
-
 }
 
 /// Build an `<iq>` Node from an `InfoQuery` and an ID string.

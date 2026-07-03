@@ -87,10 +87,10 @@ impl Client {
 
         let raw_rx = self
             .inner
-            .raw_rx
+            .raw_tx
             .as_ref()
             .ok_or(ClientError::NotConnected)?
-            .clone();
+            .new_receiver();
 
         let (tx, rx) = async_channel::bounded(4);
         let stream = PairEventStream::new(rx);

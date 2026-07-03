@@ -11,7 +11,7 @@ use wacore_binary::builder::NodeBuilder;
 use waepic_connection::RawEvent;
 
 use crate::{
-    Client,
+    Client, Result,
     client::{
         handlers::{
             handle_chatstate, handle_failure, handle_history_sync, handle_ib, handle_notification,
@@ -20,6 +20,7 @@ use crate::{
         },
         pair::{send_active_iq, upload_prekeys_if_needed},
     },
+    error::ClientError,
     update::Update,
 };
 
@@ -33,10 +34,9 @@ use crate::{
 ///
 /// ```no_run
 /// # use waepic_client::Client;
-/// # use waepic_connection::RawEvent;
 ///
-/// # async fn example(client: &Client, raw_rx: async_broadcast::Receiver<RawEvent>) {
-/// let (mut updates, update_task) = client.stream_updates(raw_rx);
+/// # async fn example(client: &Client) {
+/// let (mut updates, update_task) = client.stream_updates().expect("client must be connected");
 /// // Spawn the update task on your runtime
 /// while let Some(update) = updates.next().await {
 ///     println!("Received update: {update:?}");
@@ -63,15 +63,19 @@ impl Client {
     ///
     /// Returns the stream and a future that must be spawned on your runtime
     /// to drive the update processing loop.
-    pub fn stream_updates(
-        &self,
-        raw_rx: async_broadcast::Receiver<RawEvent>,
-    ) -> (UpdateStream, impl Future<Output = ()> + use<>) {
+    pub fn stream_updates(&self) -> Result<(UpdateStream, impl Future<Output = ()> + use<>)> {
+        let raw_rx = self
+            .inner
+            .raw_tx
+            .as_ref()
+            .ok_or(ClientError::NotConnected)?
+            .new_receiver();
+
         let (tx, rx) = async_channel::unbounded();
         let client = self.clone();
 
         let future = run_update_stream(client, raw_rx, tx);
-        (UpdateStream { rx }, future)
+        Ok((UpdateStream { rx }, future))
     }
 }
 

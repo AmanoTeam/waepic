@@ -46,10 +46,10 @@ async fn main() {
     println!("       Config:  {:?}", config.device.version);
 
     // Step 2: Connect to WhatsApp
-    // Client::connect returns (Client, Receiver<RawEvent>, ConnectionRunner).
+    // Client::connect returns (Client, ConnectionRunner).
     // The caller must spawn the runner on their runtime.
     println!("\n[2/6] Connecting to WhatsApp...");
-    let (client, raw_rx, runner) = Client::connect(session, config);
+    let (client, runner) = Client::connect(session, config);
     compio::runtime::spawn(runner.run()).detach();
     println!("       Client created, connection runner spawned in background.");
 
@@ -63,7 +63,7 @@ async fn main() {
     // stream_updates() returns (UpdateStream, Future). The future must be
     // spawned to drive the update processing.
     println!("\n[3/6] Starting update stream, waiting for connection...");
-    let (mut updates, update_task) = client.stream_updates(raw_rx);
+    let (mut updates, update_task) = client.stream_updates().expect("client must be connected");
     compio::runtime::spawn(update_task).detach();
 
     // Wait for the Connected event before proceeding (may take a few retries)
@@ -125,7 +125,6 @@ async fn main() {
     .detach();
 
     // Step 6: Block until Ctrl+C, then disconnect gracefully
-    // compio does not expose a signal module, so we block forever.
     println!("\n[6/6] Waiting for Ctrl+C...");
     pending::<()>().await;
 

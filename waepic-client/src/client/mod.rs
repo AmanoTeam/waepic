@@ -40,8 +40,7 @@ pub(crate) struct ClientInner {
     pub(crate) handle: ConnectionHandle,
     pub(crate) session: Arc<dyn Session>,
     pub(crate) config: ClientConfiguration,
-    #[allow(dead_code)]
-    pub(crate) raw_rx: Option<async_broadcast::Receiver<RawEvent>>,
+    pub(crate) raw_tx: Option<async_broadcast::Sender<RawEvent>>,
     /// Device state (identity key, registration ID, prekeys, etc.).
     pub(crate) device: Arc<RwLock<wacore::store::Device>>,
     /// Signal protocol state cache (sessions, identities, sender keys).
@@ -61,7 +60,7 @@ impl Client {
                 handle,
                 session,
                 config,
-                raw_rx: None,
+                raw_tx: None,
                 device: Arc::new(RwLock::new(wacore::store::Device::new())),
                 signal_cache: Arc::new(SignalStoreCache::new()),
             }),
@@ -73,21 +72,21 @@ impl Client {
     pub fn connect(
         session: Arc<dyn Session>,
         config: ClientConfiguration,
-    ) -> (Self, async_broadcast::Receiver<RawEvent>, ConnectionRunner) {
-        let (runner, raw_rx, handle) = Connection::new(session.clone(), config.connection.clone());
+    ) -> (Self, ConnectionRunner) {
+        let (runner, event_tx, handle) = Connection::new(session.clone(), config.connection.clone());
 
         let client = Self {
             inner: Arc::new(ClientInner {
                 handle,
                 session,
                 config,
-                raw_rx: Some(raw_rx.clone()),
+                raw_tx: Some(event_tx),
                 device: Arc::new(RwLock::new(wacore::store::Device::new())),
                 signal_cache: Arc::new(SignalStoreCache::new()),
             }),
         };
 
-        (client, raw_rx, runner)
+        (client, runner)
     }
 
     /// Load device state from the session backend, or keep the fresh device if none exists.
