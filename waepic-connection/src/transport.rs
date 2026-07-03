@@ -1,14 +1,14 @@
-//! WebSocket transport via [`async-tungstenite`] with pluggable TLS.
+//! WebSocket transport via `async-tungstenite` with pluggable TLS.
 //!
 //! Provides a runtime-agnostic WebSocket transport implementing
 //! [`wacore::net::TransportFactory`] and [`wacore::net::Transport`].
 //!
 //! # Feature flags
 //!
-//! - `smol` (default): Enables [`async_tungstenite::smol`] for the non-tokio
+//! - `smol` (default): Enables `async_tungstenite::smol` for the non-tokio
 //!   connection path.
-//! - `tokio`: Uses [`async_tungstenite::tokio::connect_async`] for TCP+TLS+WS
-//!   in one call and [`tokio::task::spawn`] for the read pump.
+//! - `tokio`: Uses `async_tungstenite::tokio::connect_async` for TCP+TLS+WS
+//!   in one call and `tokio::task::spawn` for the read pump.
 //! - `rustls` (default): TLS via rustls with webpki-roots.
 //! - `native-tls`: TLS via the platform's native TLS implementation.
 

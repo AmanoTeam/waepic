@@ -1,6 +1,6 @@
 //! Frame processing: decryption, node parsing, IQ routing, and keepalive.
 //!
-//! These functions are called from [`ConnectionRunner::run`] to drive the
+//! These functions are called from `ConnectionRunner::run` to drive the
 //! connection lifecycle. They are split out to keep the runner focused on
 //! the top-level reconnect loop.
 

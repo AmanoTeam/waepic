@@ -24,14 +24,22 @@
 
 #![deny(clippy::all)]
 
+/// Cached chat record type.
 pub mod chat;
+/// Error types for session operations.
 pub mod error;
+/// In-memory session storage implementation.
 pub mod memory;
+/// Session storage trait and backend re-export.
 pub mod session;
 
+/// Re-export of the cached chat entry type.
 pub use chat::ChatEntry;
+/// Re-export of the session error type.
 pub use error::SessionError;
+/// Re-export of the in-memory session implementation.
 pub use memory::MemorySession;
+/// Re-export of the session trait and backend trait.
 pub use session::{Backend, Session};
 
 /// Convenient [`Result`] alias for session operations.

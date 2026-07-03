@@ -1,30 +1,44 @@
+//! Error types for all client operations.
+
 use waepic_connection::ConnectionError;
 
 /// The unified error type for client operations.
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
+    /// A connection-layer error occurred.
     #[error("connection error: {0}")]
     Connection(#[from] ConnectionError),
+    /// The client is not connected to the WhatsApp server.
     #[error("not connected to WhatsApp server")]
     NotConnected,
+    /// The client is not logged in.
     #[error("not logged in")]
     NotLoggedIn,
+    /// A connection was already established.
     #[error("already connected")]
     AlreadyConnected,
+    /// A socket-level error occurred.
     #[error("socket error: {0}")]
     Socket(String),
+    /// Encryption or sending failed.
     #[error("encryption/send error: {0}")]
     EncryptSend(String),
+    /// An IQ (Info Query) request failed.
     #[error("IQ error")]
     Iq(#[from] IqError),
+    /// An authentication error occurred.
     #[error("authentication error")]
     Auth(#[from] AuthError),
+    /// A message send error occurred.
     #[error("send error")]
     Send(#[from] SendError),
+    /// A protocol-level error occurred.
     #[error("protocol error: {0}")]
     Protocol(String),
+    /// An I/O error occurred.
     #[error("IO error")]
     Io(#[from] std::io::Error),
+    /// An internal error occurred.
     #[error("internal error: {0}")]
     Internal(String),
 }

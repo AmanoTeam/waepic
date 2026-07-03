@@ -34,16 +34,22 @@ pub mod peer;
 /// Event types emitted by the client: [`Update`] and supporting structs.
 pub mod update;
 
+/// Re-export of the main client handle, update stream, and pairing types.
 pub use client::{
     Client, UpdateStream,
     auth::LoginStatus,
     messages::RevokeType,
     pair::{PairEvent, PairEventStream},
 };
+/// Re-export of the client configuration type.
 pub use config::ClientConfiguration;
+/// Re-export of all error types.
 pub use error::{AuthError, ClientError, IqError, SendError};
+/// Re-export of message types.
 pub use message::{InputMessage, Message, MessageInfo};
+/// Re-export of peer types and JID utilities.
 pub use peer::{Chat, Group, Jid, JidExt, Newsletter, OtherChat, Server, User};
+/// Re-export of the update event enum.
 pub use update::Update;
 
 /// Convenient [`Result`] alias for client operations.

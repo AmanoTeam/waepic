@@ -1,3 +1,5 @@
+//! Error types for session operations.
+
 use std::io;
 
 /// Error type for session operations.

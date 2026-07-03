@@ -33,18 +33,24 @@ struct SharedDevice {
     backend: Arc<dyn Backend>,
 }
 
+/// Signal session store adapter backed by the session backend and cache.
 #[derive(Clone)]
 pub struct SessionAdapter(SharedDevice);
+/// Signal identity key store adapter backed by the device state.
 #[derive(Clone)]
 pub struct IdentityAdapter(SharedDevice);
+/// Signal pre-key store adapter backed by the session backend.
 #[derive(Clone)]
 pub struct PreKeyAdapter(SharedDevice);
+/// Signal signed pre-key store adapter backed by the session backend.
 #[derive(Clone)]
 pub struct SignedPreKeyAdapter(SharedDevice);
+/// Signal sender key store adapter backed by the session backend and cache.
 #[derive(Clone)]
 pub struct SenderKeyAdapter(SharedDevice);
 
 impl SenderKeyAdapter {
+    /// Create a new sender key adapter from shared device state, cache, and backend.
     pub fn new(
         device: Arc<RwLock<wacore::store::Device>>,
         cache: Arc<SignalStoreCache>,
@@ -58,16 +64,23 @@ impl SenderKeyAdapter {
     }
 }
 
+/// Composite Signal protocol store combining all five sub-adapters.
 #[derive(Clone)]
 pub struct SignalProtocolStoreAdapter {
+    /// Session store for Signal protocol sessions.
     pub session_store: SessionAdapter,
+    /// Identity key store for trust management.
     pub identity_store: IdentityAdapter,
+    /// Pre-key store for one-time prekeys.
     pub pre_key_store: PreKeyAdapter,
+    /// Signed pre-key store.
     pub signed_pre_key_store: SignedPreKeyAdapter,
+    /// Sender key store for group messaging.
     pub sender_key_store: SenderKeyAdapter,
 }
 
 impl SignalProtocolStoreAdapter {
+    /// Create a new composite store from shared device state, cache, and backend.
     pub fn new(
         device: Arc<RwLock<wacore::store::Device>>,
         cache: Arc<SignalStoreCache>,

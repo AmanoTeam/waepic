@@ -1,6 +1,6 @@
 //! QR pairing types, event stream, and protocol logic.
 //!
-//! Provides [`PairEvent`], [`PairEventStream`], and the internal
+//! Provides `PairEvent`, `PairEventStream`, and the internal
 //! `run_qr_pairing` function that drives the full QR pairing flow.
 
 use std::{sync::Arc, time::Duration};

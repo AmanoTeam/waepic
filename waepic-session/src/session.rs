@@ -6,6 +6,7 @@ use wacore_binary::Jid;
 
 use crate::{ChatEntry, Result};
 
+/// Re-export of the protocol-level persistence backend trait.
 pub use wacore::store::traits::Backend;
 
 /// Session storage trait for peer/chat caching.

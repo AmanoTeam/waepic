@@ -1,3 +1,5 @@
+//! Client configuration: device properties, reconnect behavior, WebSocket URL.
+
 use waproto::whatsapp::device_props::PlatformType;
 use waepic_connection::ConnectionConfig;
 

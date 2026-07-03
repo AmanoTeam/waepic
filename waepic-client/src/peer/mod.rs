@@ -1,17 +1,26 @@
 //! Types relating to WhatsApp chats: users, groups, newsletters, and more.
 
+/// Group conversation type.
 pub mod group;
+/// Newsletter (channel) conversation type.
 pub mod newsletter;
+/// Other chat type for unrecognised JID servers.
 pub mod other;
+/// User (1:1 conversation) type.
 pub mod user;
 
+/// Re-export of the group conversation type.
 pub use group::Group;
+/// Re-export of the newsletter conversation type.
 pub use newsletter::Newsletter;
+/// Re-export of the other chat type.
 pub use other::OtherChat;
+/// Re-export of the user conversation type.
 pub use user::User;
 
 use std::fmt;
 
+/// Re-export of JID types and utilities from `wacore_binary`.
 pub use wacore_binary::{Jid, JidExt, Server};
 
 /// The universal conversation target.

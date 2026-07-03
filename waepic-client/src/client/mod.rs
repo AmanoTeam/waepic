@@ -1,8 +1,19 @@
+//! The main client handle and its API methods.
+//!
+//! Provides [`Client`] for connecting, authenticating, sending messages,
+//! and receiving updates from the WhatsApp server.
+
+/// Authentication status and login-check helpers.
 pub mod auth;
+/// Incoming node handlers that convert raw protocol nodes into `Update` events.
 pub mod handlers;
+/// Message operations: send, edit, delete, forward, react, and mark as read.
 pub mod messages;
+/// QR and pair-code pairing types and protocol logic.
 pub mod pair;
+/// Signal protocol store adapter bridging wacore's libsignal to the session backend.
 pub mod signal_adapter;
+/// Update stream that converts raw connection events into high-level `Update` items.
 pub mod updates;
 
 use std::{fmt, sync::Arc};
@@ -25,6 +36,7 @@ use crate::{
     peer::{Chat, Group, Newsletter, OtherChat, User},
 };
 
+/// Re-export of the update stream type.
 pub use updates::UpdateStream;
 
 /// The main WhatsApp client handle.
@@ -154,12 +166,17 @@ impl Client {
         }
     }
 
+    /// Disconnect from the WhatsApp server.
     #[tracing::instrument(skip(self))]
     pub async fn disconnect(&self) -> Result<()> {
         self.inner.handle.disconnect().await?;
         Ok(())
     }
 
+    /// Log out from the WhatsApp server and disconnect.
+    ///
+    /// Sends a remove-companion-device IQ to the server, then disconnects
+    /// the underlying connection.
     #[tracing::instrument(skip(self))]
     pub async fn logout(&self) -> Result<()> {
         let device = self.inner.device.read().await;

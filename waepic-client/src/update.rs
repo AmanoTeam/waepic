@@ -9,6 +9,7 @@ use crate::{
     peer::{Chat, Jid},
 };
 
+/// Re-export of the raw protocol node type.
 pub use wacore_binary::Node;
 
 /// High-level event emitted by the client to the application.

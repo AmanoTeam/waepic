@@ -35,6 +35,7 @@ use wacore_binary::{
 
 use crate::{ConnectionError, NoiseSocket, Result, frame};
 
+/// Configuration for the WebSocket connection layer.
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
     /// WebSocket endpoint URL.
