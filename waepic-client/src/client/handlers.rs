@@ -1119,7 +1119,7 @@ mod tests {
     #[test]
     fn extract_payload_returns_none_for_other_nodes() {
         let node = NodeBuilder::new("message")
-            .attr("from", &Jid::pn("12345"))
+            .attr("from", Jid::pn("12345"))
             .build();
 
         let extracted = extract_history_sync_payload(&node);

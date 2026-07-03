@@ -35,7 +35,7 @@ pub mod peer;
 pub mod update;
 
 pub use client::{
-    Client,
+    Client, UpdateStream,
     auth::LoginStatus,
     messages::RevokeType,
     pair::{PairEvent, PairEventStream},

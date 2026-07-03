@@ -3,6 +3,7 @@ pub mod handlers;
 pub mod messages;
 pub mod pair;
 pub mod signal_adapter;
+pub mod updates;
 
 use std::{fmt, sync::Arc};
 
@@ -20,6 +21,8 @@ use crate::{
     error::ClientError,
     peer::{Chat, Group, Newsletter, OtherChat, User},
 };
+
+pub use updates::UpdateStream;
 
 /// The main WhatsApp client handle.
 #[derive(Clone)]

@@ -335,7 +335,7 @@ mod tests {
             .get_identity_key_pair()
             .await
             .unwrap();
-        let identity = IdentityKey::new(key_pair.public_key().clone());
+        let identity = IdentityKey::new(*key_pair.public_key());
         assert!(
             adapter
                 .identity_store

@@ -443,7 +443,7 @@ async fn is_already_paired(session: &Arc<dyn Session>) -> bool {
     }
 }
 
-async fn upload_prekeys_if_needed(
+pub(crate) async fn upload_prekeys_if_needed(
     handle: &ConnectionHandle,
     session: &Arc<dyn Session>,
     device: &wacore::store::Device,
@@ -509,7 +509,7 @@ async fn upload_prekeys_if_needed(
 }
 
 /// Send an active IQ to exit passive mode so the server delivers messages.
-async fn send_active_iq(handle: &ConnectionHandle) -> Result<()> {
+pub(crate) async fn send_active_iq(handle: &ConnectionHandle) -> Result<()> {
     handle
         .send_iq(PassiveModeSpec::active())
         .await
