@@ -365,7 +365,7 @@ mod tests {
     use crate::chat::tests::{test_chat_entry, test_jid};
 
     #[compio::test]
-    async fn test_cache_and_get_chat() {
+    async fn cache_and_get_chat() {
         let session = MemorySession::new();
         let entry = test_chat_entry();
         session.cache_chat(&entry).await.unwrap();
@@ -379,7 +379,7 @@ mod tests {
     }
 
     #[compio::test]
-    async fn test_get_chat_nonexistent() {
+    async fn get_chat_nonexistent() {
         let session = MemorySession::new();
 
         let result = session.get_chat(&test_jid()).await.unwrap();
@@ -387,7 +387,7 @@ mod tests {
     }
 
     #[compio::test]
-    async fn test_is_contact_unknown() {
+    async fn is_contact_unknown() {
         let session = MemorySession::new();
 
         let result = session.is_contact(&test_jid()).await.unwrap();
@@ -395,7 +395,7 @@ mod tests {
     }
 
     #[compio::test]
-    async fn test_is_contact_after_add() {
+    async fn is_contact_after_add() {
         let session = MemorySession::new();
         session.add_contact(&test_jid()).await;
 
@@ -404,7 +404,7 @@ mod tests {
     }
 
     #[compio::test]
-    async fn test_remove_chat() {
+    async fn remove_chat() {
         let session = MemorySession::new();
         let entry = test_chat_entry();
 
@@ -416,7 +416,7 @@ mod tests {
     }
 
     #[compio::test]
-    async fn test_get_chats() {
+    async fn get_chats() {
         let session = MemorySession::new();
         let entry = test_chat_entry();
         session.cache_chat(&entry).await.unwrap();
