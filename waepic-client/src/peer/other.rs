@@ -7,7 +7,7 @@ use crate::Client;
 pub struct OtherChat {
     jid: Jid,
     #[allow(dead_code)]
-    client: Client,
+    pub(crate) client: Client,
 }
 
 impl OtherChat {

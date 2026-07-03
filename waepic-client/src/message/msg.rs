@@ -13,14 +13,12 @@ pub use wacore::types::message::MessageInfo;
 pub struct Message {
     raw: waproto::whatsapp::Message,
     info: MessageInfo,
-    #[allow(dead_code)]
     client: Client,
     chat: Chat,
 }
 
 impl Message {
     /// Create a new `Message` from its raw parts.
-    #[allow(dead_code)]
     pub(crate) fn new(
         raw: waproto::whatsapp::Message,
         info: MessageInfo,
@@ -93,32 +91,45 @@ impl Message {
     }
 
     /// Send a new message to the same chat without replying to this message.
-    pub async fn respond(&self, _msg: impl Into<InputMessage>) -> Result<Message> {
-        todo!()
+    pub async fn respond(&self, msg: impl Into<InputMessage>) -> Result<Message> {
+        self.client
+            .send_message(self.chat.clone(), msg.into())
+            .await
     }
 
     /// Send a reply to this message.
-    pub async fn reply(&self, _msg: impl Into<InputMessage>) -> Result<Message> {
-        todo!()
+    pub async fn reply(&self, msg: impl Into<InputMessage>) -> Result<Message> {
+        let reply_msg: InputMessage = msg.into();
+        let reply_msg = reply_msg.reply_to(Some(self.id().to_owned()));
+
+        self.client.send_message(self.chat.clone(), reply_msg).await
     }
 
     /// Edit this message's text.
-    pub async fn edit(&self, _new_text: impl Into<InputMessage>) -> Result<()> {
-        todo!()
+    pub async fn edit(&self, new_text: impl Into<InputMessage>) -> Result<()> {
+        self.client
+            .edit_message(self.chat.clone(), self.id(), new_text.into())
+            .await
     }
 
     /// Delete this message for everyone.
     pub async fn delete(&self) -> Result<()> {
-        todo!()
+        self.client
+            .delete_messages(self.chat.clone(), &[self.id()])
+            .await
     }
 
     /// React to this message with an emoji.
-    pub async fn react(&self, _emoji: &str) -> Result<()> {
-        todo!()
+    pub async fn react(&self, emoji: &str) -> Result<()> {
+        self.client
+            .send_reaction(self.chat.clone(), self.id(), emoji)
+            .await
     }
 
     /// Mark this message as read.
     pub async fn mark_as_read(&self) -> Result<()> {
-        todo!()
+        self.client
+            .mark_as_read(self.chat.clone(), &[self.id()])
+            .await
     }
 }

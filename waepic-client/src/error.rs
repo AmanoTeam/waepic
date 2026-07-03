@@ -1,6 +1,10 @@
+use waepic_connection::ConnectionError;
+
 /// The unified error type for client operations.
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
+    #[error("connection error: {0}")]
+    Connection(#[from] ConnectionError),
     #[error("not connected to WhatsApp server")]
     NotConnected,
     #[error("not logged in")]

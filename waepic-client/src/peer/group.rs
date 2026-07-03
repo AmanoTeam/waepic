@@ -1,14 +1,13 @@
 use wacore_binary::Jid;
 
-use crate::Client;
+use crate::{Client, InputMessage, Message, Result};
 
 /// A group conversation.
 #[derive(Clone, Debug)]
 pub struct Group {
     jid: Jid,
     subject: Option<String>,
-    #[allow(dead_code)]
-    client: Client,
+    pub(crate) client: Client,
 }
 
 impl Group {
@@ -28,5 +27,15 @@ impl Group {
     /// The group subject (name), if known.
     pub fn subject(&self) -> Option<&str> {
         self.subject.as_deref()
+    }
+
+    /// Send a message to this group.
+    pub async fn send_message(&self, msg: impl Into<InputMessage>) -> Result<Message> {
+        self.client.send_message(self.clone(), msg.into()).await
+    }
+
+    /// Mark messages as read in this group.
+    pub async fn mark_as_read(&self, message_ids: &[&str]) -> Result<()> {
+        self.client.mark_as_read(self.clone(), message_ids).await
     }
 }

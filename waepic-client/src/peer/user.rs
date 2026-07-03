@@ -1,6 +1,6 @@
 use wacore_binary::Jid;
 
-use crate::Client;
+use crate::{Client, InputMessage, Message, Result};
 
 /// A private 1:1 conversation with a WhatsApp user.
 #[derive(Clone, Debug)]
@@ -9,8 +9,7 @@ pub struct User {
     name: Option<String>,
     push_name: Option<String>,
     phone_number: Option<String>,
-    #[allow(dead_code)]
-    client: Client,
+    pub(crate) client: Client,
 }
 
 impl User {
@@ -48,5 +47,15 @@ impl User {
     #[allow(dead_code)]
     pub(crate) fn set_push_name(&mut self, name: String) {
         self.push_name = Some(name);
+    }
+
+    /// Send a message to this user.
+    pub async fn send_message(&self, msg: impl Into<InputMessage>) -> Result<Message> {
+        self.client.send_message(self.clone(), msg.into()).await
+    }
+
+    /// Mark messages as read in this chat.
+    pub async fn mark_as_read(&self, message_ids: &[&str]) -> Result<()> {
+        self.client.mark_as_read(self.clone(), message_ids).await
     }
 }

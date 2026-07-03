@@ -9,12 +9,11 @@
 ///     .silent(true);
 /// ```
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub struct InputMessage {
-    text: Option<String>,
-    reply_to: Option<String>,
-    silent: bool,
-    link_preview: bool,
+    pub(crate) text: Option<String>,
+    pub(crate) reply_to: Option<String>,
+    pub(crate) silent: bool,
+    pub(crate) link_preview: bool,
 }
 
 impl InputMessage {

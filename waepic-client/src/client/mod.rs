@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod messages;
 pub mod pair;
 
 use std::{fmt, sync::Arc};
@@ -15,7 +16,6 @@ use crate::{
 /// The main WhatsApp client handle.
 #[derive(Clone)]
 pub struct Client {
-    #[allow(dead_code)]
     pub(crate) inner: Arc<ClientInner>,
 }
 
@@ -25,11 +25,11 @@ impl fmt::Debug for Client {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) struct ClientInner {
     pub(crate) handle: ConnectionHandle,
     pub(crate) session: Arc<dyn Session>,
     pub(crate) config: ClientConfiguration,
+    #[allow(dead_code)]
     pub(crate) raw_rx: Option<async_broadcast::Receiver<RawEvent>>,
 }
 
@@ -71,7 +71,6 @@ impl Client {
     }
 
     /// Map a JID to the appropriate [`Chat`] variant based on its server type.
-    #[tracing::instrument(skip(self))]
     pub fn chat(&self, jid: Jid) -> Chat {
         match jid.server() {
             Server::Pn | Server::Lid => Chat::User(User::new(jid, self.clone())),

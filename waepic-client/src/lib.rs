@@ -37,6 +37,7 @@ pub mod update;
 pub use client::{
     Client,
     auth::LoginStatus,
+    messages::RevokeType,
     pair::{PairEvent, PairEventStream},
 };
 pub use config::ClientConfiguration;
