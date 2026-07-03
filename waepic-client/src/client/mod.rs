@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod messages;
 pub mod pair;
+pub mod signal_adapter;
 
 use std::{fmt, sync::Arc};
 

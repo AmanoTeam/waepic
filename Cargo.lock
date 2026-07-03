@@ -2553,6 +2553,8 @@ version = "0.1.0"
 dependencies = [
  "async-broadcast",
  "async-channel",
+ "async-lock",
+ "async-trait",
  "bytes",
  "chrono",
  "compio",
