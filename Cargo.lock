@@ -2558,6 +2558,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "waepic"
+version = "0.1.0"
+dependencies = [
+ "waepic-client",
+ "waepic-connection",
+ "waepic-session",
+]
+
+[[package]]
 name = "waepic-client"
 version = "0.1.0"
 dependencies = [

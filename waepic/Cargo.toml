@@ -1,0 +1,11 @@
+[package]
+name = "waepic"
+
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+waepic-client = { workspace = true }
+waepic-connection = { workspace = true }
+waepic-session = { workspace = true }
