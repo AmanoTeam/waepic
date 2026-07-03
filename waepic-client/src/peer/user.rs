@@ -9,6 +9,7 @@ pub struct User {
     name: Option<String>,
     push_name: Option<String>,
     phone_number: Option<String>,
+    #[allow(dead_code)]
     pub(crate) client: Client,
 }
 

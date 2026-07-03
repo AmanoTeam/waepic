@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 waepic-connection.workspace = true
 
+wacore.workspace = true
 wacore-binary.workspace = true
 waproto.workspace = true
 

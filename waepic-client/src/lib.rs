@@ -48,13 +48,22 @@
 
 #![deny(clippy::all)]
 
+/// The main [`Client`] handle and its API methods.
+pub mod client;
 /// Client configuration: device properties, reconnect behavior, WebSocket URL.
 pub mod config;
 /// Error types for all client operations.
 pub mod error;
+/// High-level message types: [`Message`], [`InputMessage`], and [`MessageInfo`].
+pub mod message;
+/// Types relating to WhatsApp chats: users, groups, newsletters, and more.
+pub mod peer;
 
+pub use client::Client;
 pub use config::ClientConfiguration;
 pub use error::{AuthError, ClientError, IqError, SendError};
+pub use message::{InputMessage, Message, MessageInfo};
+pub use peer::{Chat, Group, Jid, JidExt, Newsletter, OtherChat, Server, User};
 
 /// Convenient [`Result`] alias for client operations.
 pub type Result<T> = std::result::Result<T, ClientError>;

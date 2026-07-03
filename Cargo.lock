@@ -2498,6 +2498,7 @@ name = "waepic-client"
 version = "0.1.0"
 dependencies = [
  "thiserror",
+ "wacore",
  "wacore-binary",
  "waepic-connection",
  "waproto",

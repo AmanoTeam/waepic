@@ -14,8 +14,6 @@ use std::fmt;
 
 pub use wacore_binary::{Jid, JidExt, Server};
 
-use crate::Client;
-
 /// The universal conversation target.
 #[derive(Clone, Debug)]
 pub enum Chat {
@@ -64,17 +62,6 @@ impl Chat {
     /// Whether this chat is a newsletter (channel).
     pub fn is_newsletter(&self) -> bool {
         matches!(self, Self::Newsletter(_))
-    }
-
-    /// The [`Client`] that owns this chat (crate-internal).
-    #[allow(dead_code)]
-    pub(crate) fn client(&self) -> &Client {
-        match self {
-            Self::User(u) => &u.client,
-            Self::Group(g) => &g.client,
-            Self::Newsletter(n) => &n.client,
-            Self::Other(o) => &o.client,
-        }
     }
 }
 

@@ -7,6 +7,7 @@ use crate::Client;
 pub struct Newsletter {
     jid: Jid,
     name: Option<String>,
+    #[allow(dead_code)]
     pub(crate) client: Client,
 }
 

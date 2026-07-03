@@ -6,6 +6,7 @@ use crate::Client;
 #[derive(Clone, Debug)]
 pub struct OtherChat {
     jid: Jid,
+    #[allow(dead_code)]
     pub(crate) client: Client,
 }
 
