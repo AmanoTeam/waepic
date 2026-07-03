@@ -1,7 +1,7 @@
 //! High-level message types: [`Message`], [`InputMessage`], and [`MessageInfo`].
 
 pub mod input_message;
-pub mod message;
+pub mod msg;
 
 pub use input_message::InputMessage;
-pub use message::{Message, MessageInfo};
+pub use msg::{Message, MessageInfo};
