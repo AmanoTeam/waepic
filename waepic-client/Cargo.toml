@@ -30,6 +30,7 @@ tracing.workspace = true
 compio.workspace = true
 
 [dev-dependencies]
+async-signal.workspace = true
 compio = { workspace = true, features = ["macros"] }
 qr2term.workspace = true
 tracing-subscriber.workspace = true
