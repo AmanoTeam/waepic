@@ -17,7 +17,6 @@
 use std::sync::Arc;
 
 use async_signal::{Signal, Signals};
-use futures_util::future::join;
 use futures_util::StreamExt;
 use tracing::Level;
 use wacore::store::traits::DeviceStore;
@@ -32,14 +31,9 @@ async fn main() {
 
     println!("=== waepic-client QR Pairing Example ===\n");
 
-    // Step 1: Create a session and configuration
-    // MemorySession wraps InMemoryBackend and adds chat caching.
-    // Session extends Backend, so one object serves both roles.
     println!("[1/6] Creating session and configuration...");
 
     let session = Arc::new(MemorySession::new());
-
-    // Initialize the device in the backend (generates noise keys, identity keys, etc.)
     session.create().await.expect("failed to create device");
 
     let config = ClientConfiguration::default();
@@ -47,28 +41,20 @@ async fn main() {
     println!("       Session: MemorySession");
     println!("       Config:  {:?}", config.device.version);
 
-    // Step 2: Connect to WhatsApp
-    // Client::connect returns (Client, ConnectionRunner).
-    // The caller must spawn the runner on their runtime.
     println!("\n[2/6] Connecting to WhatsApp...");
     let (client, runner) = Client::connect(session, config);
     compio::runtime::spawn(runner.run()).detach();
     println!("       Client created, connection runner spawned in background.");
 
-    // Load device state from the session backend
     client
         .load_or_create_device()
         .await
         .expect("failed to load device");
 
-    // Step 3: Start update stream and wait for connection
-    // stream_updates() returns (UpdateStream, Future). The future must be
-    // spawned to drive the update processing.
     println!("\n[3/6] Starting update stream, waiting for connection...");
     let (mut updates, update_task) = client.stream_updates().expect("client must be connected");
     compio::runtime::spawn(update_task).detach();
 
-    // Wait for the Connected event before proceeding (may take a few retries)
     let mut connected = false;
     let mut attempts = 0;
     while let Some(update) = updates.next().await {
@@ -97,7 +83,6 @@ async fn main() {
         return;
     }
 
-    // Step 4: Check authorization status
     println!("\n[4/6] Checking authorization status...");
     match client.is_authorized().await {
         Ok(true) => {
@@ -108,14 +93,13 @@ async fn main() {
         }
         Ok(false) => {
             println!("       not paired. Requesting QR pairing...");
-            request_qr_pairing(client.clone()).await;
+            request_pairing(client.clone()).await;
         }
         Err(e) => {
             println!("       could not check authorization: {e}");
         }
     }
 
-    // Step 5: Print remaining updates
     println!("\n[5/6] Listening for updates (Ctrl+C to exit)...");
     let client_clone = client.clone();
     compio::runtime::spawn(async move {
@@ -126,10 +110,9 @@ async fn main() {
     })
     .detach();
 
-    // Step 6: Block until Ctrl+C, then disconnect gracefully
     println!("\n[6/6] Waiting for Ctrl+C...");
-    let mut signals = Signals::new([Signal::Int, Signal::Term])
-        .expect("failed to register signal handlers");
+    let mut signals =
+        Signals::new([Signal::Int, Signal::Term]).expect("failed to register signal handlers");
     signals.next().await;
 
     println!("\n       Ctrl+C received. Disconnecting...");
@@ -142,45 +125,36 @@ async fn main() {
 }
 
 /// Request QR pairing and display the QR code in the terminal.
-///
-/// Returns a PairEventStream and a future that drives the pairing process.
-/// The future must be spawned on the runtime.
-async fn request_qr_pairing(client: Client) {
-    match client.request_qr_pairing().await {
-        Ok((mut pair_stream, pair_task)) => {
+async fn request_pairing(client: Client) {
+    match client.request_pairing().await {
+        Ok(mut pair_stream) => {
             println!("       pairing stream obtained. Waiting for QR code...");
 
-            // Run event handling and the pairing task concurrently.
-            // join avoids the need to spawn (which would require 'static).
-            let handle_events = async {
-                while let Some(event) = pair_stream.recv().await {
-                    match event {
-                        PairEvent::QrCode { code, timeout } => {
-                            println!();
-                            println!("       SCAN THIS QR CODE WITH WHATSAPP");
-                            println!();
-                            qr2term::print_qr(&code).unwrap();
-                            println!();
-                            println!("       URL: {code}");
-                            println!("       expires in: {timeout}s");
-                            println!();
-                            println!("       (Open WhatsApp on your phone ->");
-                            println!("        Linked Devices -> Link a Device)");
-                            println!();
-                        }
-                        PairEvent::Success => {
-                            println!("       pairing successful!");
-                            break;
-                        }
-                        PairEvent::Error(e) => {
-                            println!("       pairing failed: {e}");
-                            break;
-                        }
+            while let Some(event) = pair_stream.recv().await {
+                match event {
+                    PairEvent::QrCode { code, timeout } => {
+                        println!();
+                        println!("       SCAN THIS QR CODE WITH WHATSAPP");
+                        println!();
+                        qr2term::print_qr(&code).unwrap();
+                        println!();
+                        println!("       URL: {code}");
+                        println!("       expires in: {timeout}s");
+                        println!();
+                        println!("       (Open WhatsApp on your phone ->");
+                        println!("        Linked Devices -> Link a Device)");
+                        println!();
+                    }
+                    PairEvent::Success => {
+                        println!("       pairing successful!");
+                        break;
+                    }
+                    PairEvent::Error(e) => {
+                        println!("       pairing failed: {e}");
+                        break;
                     }
                 }
-            };
-
-            join(handle_events, pair_task).await;
+            }
         }
         Err(e) => {
             println!("       could not start QR pairing: {e}");

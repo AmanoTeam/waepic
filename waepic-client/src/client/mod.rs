@@ -7,10 +7,13 @@ pub mod updates;
 
 use std::{fmt, sync::Arc};
 
-use async_lock::RwLock;
+use async_lock::{Mutex, RwLock};
 use chrono::Utc;
-use prost::Message as _;
-use wacore::{libsignal::store::record_helpers as wacore_record, store::SignalStoreCache};
+use buffa::message::Message as _;
+use wacore::{
+    libsignal::store::record_helpers as wacore_record, pair_code::PairCodeState,
+    store::SignalStoreCache,
+};
 use wacore_binary::{Jid, JidExt, Server};
 use waepic_connection::{Connection, ConnectionHandle, ConnectionRunner, RawEvent};
 use waepic_session::Session;
@@ -46,6 +49,8 @@ pub(crate) struct ClientInner {
     /// Signal protocol state cache (sessions, identities, sender keys).
     #[allow(dead_code)]
     pub(crate) signal_cache: Arc<SignalStoreCache>,
+    /// Pair-code authentication state machine.
+    pub(crate) pair_code_state: Mutex<PairCodeState>,
 }
 
 impl Client {
@@ -63,6 +68,7 @@ impl Client {
                 raw_tx: None,
                 device: Arc::new(RwLock::new(wacore::store::Device::new())),
                 signal_cache: Arc::new(SignalStoreCache::new()),
+                pair_code_state: Mutex::new(PairCodeState::Idle),
             }),
         }
     }
@@ -73,7 +79,8 @@ impl Client {
         session: Arc<dyn Session>,
         config: ClientConfiguration,
     ) -> (Self, ConnectionRunner) {
-        let (runner, event_tx, handle) = Connection::new(session.clone(), config.connection.clone());
+        let (runner, event_tx, handle) =
+            Connection::new(session.clone(), config.connection.clone());
 
         let client = Self {
             inner: Arc::new(ClientInner {
@@ -83,6 +90,7 @@ impl Client {
                 raw_tx: Some(event_tx),
                 device: Arc::new(RwLock::new(wacore::store::Device::new())),
                 signal_cache: Arc::new(SignalStoreCache::new()),
+                pair_code_state: Mutex::new(PairCodeState::Idle),
             }),
         };
 

@@ -12,9 +12,20 @@ waepic-client = { path = "waepic-client" }
 waepic-connection = { path = "waepic-connection" }
 waepic-session = { path = "waepic-session" }
 
-wacore = { version = "0.6", default-features = false }
-wacore-binary = { version = "0.6", default-features = false }
-waproto = "0.6"
+wacore = {
+  git = "https://github.com/oxidezap/whatsapp-rust",
+  rev = "bda9bb",
+  default-features = false
+}
+wacore-binary = {
+  git = "https://github.com/oxidezap/whatsapp-rust",
+  rev = "bda9bb",
+  default-features = false
+}
+waproto = {
+  git = "https://github.com/oxidezap/whatsapp-rust",
+  rev = "bda9bb",
+}
 
 anyhow = "1"
 async-broadcast = "0.7"
@@ -26,6 +37,7 @@ async-net = "2"
 async-signal = "0.2"
 async-trait = "0.1"
 async-tungstenite = { version = "0.34", default-features = false }
+buffa = "0.8"
 bytes = "1.12"
 chrono = "0.4"
 compio = "0.19"

@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use prost::Message as _;
+use buffa::message::Message as _;
 use wacore::store::traits::Backend;
 use wacore_binary::{
     Jid, Node, SERVER_JID,
@@ -188,7 +188,7 @@ async fn test_send_text_message() {
         other => panic!("expected Bytes content, got {other:?}"),
     }
 
-    let decoded = wa::Message::decode(encoded.as_slice()).unwrap();
+    let decoded = wa::Message::decode_from_slice(encoded.as_slice()).unwrap();
     assert_eq!(decoded.conversation.as_deref(), Some("test message"));
 }
 
@@ -221,7 +221,7 @@ async fn test_receive_message() {
         other => panic!("expected Bytes content, got {other:?}"),
     };
 
-    let wa_msg = wa::Message::decode(proto_bytes.as_slice()).unwrap();
+    let wa_msg = wa::Message::decode_from_slice(proto_bytes.as_slice()).unwrap();
     assert_eq!(
         wa_msg.conversation.as_deref(),
         Some("hello from integration test")
@@ -283,71 +283,77 @@ async fn test_edit_delete() {
     let timestamp_ms = chrono::Utc::now().timestamp_millis();
 
     let edit_proto = wa::Message {
-        protocol_message: Some(Box::new(wa::message::ProtocolMessage {
-            key: Some(wa::MessageKey {
+        protocol_message: wa::message::ProtocolMessage {
+            key: wa::MessageKey {
                 remote_jid: Some("12345@s.whatsapp.net".to_string()),
                 from_me: Some(true),
                 id: Some("ORIGINAL_ID".to_string()),
                 participant: None,
-            }),
-            r#type: Some(wa::message::protocol_message::Type::MessageEdit as i32),
-            edited_message: Some(Box::new(new_content.clone())),
+            }
+            .into(),
+            r#type: Some(wa::message::protocol_message::Type::MessageEdit),
+            edited_message: new_content.clone().into(),
             timestamp_ms: Some(timestamp_ms),
             ..Default::default()
-        })),
+        }
+        .into(),
         ..Default::default()
     };
 
-    let pm = edit_proto.protocol_message.as_ref().unwrap();
+    let pm = &edit_proto.protocol_message;
     assert_eq!(
         pm.r#type,
-        Some(wa::message::protocol_message::Type::MessageEdit as i32)
+        Some(wa::message::protocol_message::Type::MessageEdit)
     );
-    let key = pm.key.as_ref().unwrap();
+    let key = &pm.key;
     assert_eq!(key.id.as_deref(), Some("ORIGINAL_ID"));
     assert_eq!(key.from_me, Some(true));
-    let edited = pm.edited_message.as_ref().unwrap();
+    let edited = &pm.edited_message;
     assert_eq!(edited.conversation.as_deref(), Some("edited text"));
 
     let revoke_proto = wa::Message {
-        protocol_message: Some(Box::new(wa::message::ProtocolMessage {
-            key: Some(wa::MessageKey {
+        protocol_message: wa::message::ProtocolMessage {
+            key: wa::MessageKey {
                 remote_jid: Some("12345@s.whatsapp.net".to_string()),
                 from_me: Some(true),
                 id: Some("MSG_TO_DELETE".to_string()),
                 participant: None,
-            }),
-            r#type: Some(wa::message::protocol_message::Type::Revoke as i32),
+            }
+            .into(),
+            r#type: Some(wa::message::protocol_message::Type::Revoke),
             ..Default::default()
-        })),
+        }
+        .into(),
         ..Default::default()
     };
 
-    let pm = revoke_proto.protocol_message.as_ref().unwrap();
+    let pm = &revoke_proto.protocol_message;
     assert_eq!(
         pm.r#type,
-        Some(wa::message::protocol_message::Type::Revoke as i32)
+        Some(wa::message::protocol_message::Type::Revoke)
     );
-    let key = pm.key.as_ref().unwrap();
+    let key = &pm.key;
     assert_eq!(key.id.as_deref(), Some("MSG_TO_DELETE"));
-    assert!(pm.edited_message.is_none());
+    assert_eq!(pm.edited_message, wa::Message::default().into());
 
     let admin_revoke = wa::Message {
-        protocol_message: Some(Box::new(wa::message::ProtocolMessage {
-            key: Some(wa::MessageKey {
+        protocol_message: wa::message::ProtocolMessage {
+            key: wa::MessageKey {
                 remote_jid: Some("12345@s.whatsapp.net".to_string()),
                 from_me: Some(true),
                 id: Some("MSG_TO_DELETE".to_string()),
                 participant: Some("99999@s.whatsapp.net".to_string()),
-            }),
-            r#type: Some(wa::message::protocol_message::Type::Revoke as i32),
+            }
+            .into(),
+            r#type: Some(wa::message::protocol_message::Type::Revoke),
             ..Default::default()
-        })),
+        }
+        .into(),
         ..Default::default()
     };
 
-    let pm = admin_revoke.protocol_message.as_ref().unwrap();
-    let key = pm.key.as_ref().unwrap();
+    let pm = &admin_revoke.protocol_message;
+    let key = &pm.key;
     assert_eq!(key.participant.as_deref(), Some("99999@s.whatsapp.net"));
 }
 
@@ -372,23 +378,25 @@ async fn test_reaction_read_receipt() {
 
     let timestamp_ms = chrono::Utc::now().timestamp_millis();
     let reaction_proto = wa::Message {
-        reaction_message: Some(wa::message::ReactionMessage {
-            key: Some(wa::MessageKey {
+        reaction_message: wa::message::ReactionMessage {
+            key: wa::MessageKey {
                 remote_jid: Some("12345@s.whatsapp.net".to_string()),
                 from_me: Some(true),
                 id: Some("TARGET_MSG".to_string()),
                 participant: None,
-            }),
+            }
+            .into(),
             text: Some(":heart:".to_string()),
             sender_timestamp_ms: Some(timestamp_ms),
             ..Default::default()
-        }),
+        }
+        .into(),
         ..Default::default()
     };
 
-    let reaction = reaction_proto.reaction_message.as_ref().unwrap();
+    let reaction = &reaction_proto.reaction_message;
     assert_eq!(reaction.text.as_deref(), Some(":heart:"));
-    let key = reaction.key.as_ref().unwrap();
+    let key = &reaction.key;
     assert_eq!(key.remote_jid.as_deref(), Some("12345@s.whatsapp.net"));
     assert_eq!(key.id.as_deref(), Some("TARGET_MSG"));
     assert_eq!(key.from_me, Some(true));

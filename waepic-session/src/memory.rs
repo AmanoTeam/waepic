@@ -15,7 +15,7 @@ use wacore::{
         error::Result as StoreResult,
         traits::{
             AppStateSyncKey, AppSyncStore, DeviceListRecord, DeviceStore, LidPnMappingEntry,
-            ProtocolStore, SignalStore, TcTokenEntry,
+            MsgSecretEntry, MsgSecretStore, ProtocolStore, SignalStore, TcTokenEntry,
         },
     },
 };
@@ -124,6 +124,39 @@ impl SignalStore for MemorySession {
     async fn delete_sender_key(&self, address: &str) -> StoreResult<()> {
         self.backend.delete_sender_key(address).await
     }
+
+    async fn mark_prekeys_uploaded(&self, ids: &[u32]) -> StoreResult<()> {
+        self.backend.mark_prekeys_uploaded(ids).await
+    }
+}
+
+#[async_trait]
+impl MsgSecretStore for MemorySession {
+    async fn put_msg_secrets(&self, entries: Vec<MsgSecretEntry>) -> StoreResult<usize> {
+        self.backend.put_msg_secrets(entries).await
+    }
+
+    async fn get_msg_secret(
+        &self,
+        chat: &str,
+        sender: &str,
+        msg_id: &str,
+    ) -> StoreResult<Option<Vec<u8>>> {
+        self.backend.get_msg_secret(chat, sender, msg_id).await
+    }
+
+    async fn get_msg_secret_with_ts(
+        &self,
+        chat: &str,
+        sender: &str,
+        msg_id: &str,
+    ) -> StoreResult<Option<(Vec<u8>, i64)>> {
+        self.backend.get_msg_secret_with_ts(chat, sender, msg_id).await
+    }
+
+    async fn delete_expired_msg_secrets(&self, cutoff_timestamp: i64) -> StoreResult<u32> {
+        self.backend.delete_expired_msg_secrets(cutoff_timestamp).await
+    }
 }
 
 #[async_trait]
@@ -161,6 +194,10 @@ impl AppSyncStore for MemorySession {
 
     async fn delete_mutation_macs(&self, name: &str, index_macs: &[Vec<u8>]) -> StoreResult<()> {
         self.backend.delete_mutation_macs(name, index_macs).await
+    }
+
+    async fn clear_mutation_macs(&self, name: &str) -> StoreResult<()> {
+        self.backend.clear_mutation_macs(name).await
     }
 
     async fn get_latest_sync_key_id(&self) -> StoreResult<Option<Vec<u8>>> {
@@ -266,9 +303,9 @@ impl ProtocolStore for MemorySession {
         self.backend.get_all_tc_token_jids().await
     }
 
-    async fn delete_expired_tc_tokens(&self, cutoff_timestamp: i64) -> StoreResult<u32> {
+    async fn delete_expired_tc_tokens(&self, token_cutoff: i64, sender_cutoff: i64) -> StoreResult<u32> {
         self.backend
-            .delete_expired_tc_tokens(cutoff_timestamp)
+            .delete_expired_tc_tokens(token_cutoff, sender_cutoff)
             .await
     }
 

@@ -5,7 +5,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use prost::Message as _;
+use buffa::message::Message as _;
 use wacore_binary::{Jid, Node, builder::NodeBuilder};
 use waproto::whatsapp as wa;
 
@@ -35,14 +35,16 @@ fn input_to_proto(msg: &InputMessage) -> wa::Message {
 
     if let Some(reply_to_id) = msg.reply_to.as_deref() {
         wa::Message {
-            extended_text_message: Some(Box::new(wa::message::ExtendedTextMessage {
+            extended_text_message: wa::message::ExtendedTextMessage {
                 text: text.map(|t| t.to_string()),
-                context_info: Some(Box::new(wa::ContextInfo {
+                context_info: wa::ContextInfo {
                     stanza_id: Some(reply_to_id.to_string()),
                     ..Default::default()
-                })),
+                }
+                .into(),
                 ..Default::default()
-            })),
+            }
+            .into(),
             ..Default::default()
         }
     } else {
@@ -88,18 +90,20 @@ fn build_edit_proto(
     timestamp_ms: i64,
 ) -> wa::Message {
     wa::Message {
-        protocol_message: Some(Box::new(wa::message::ProtocolMessage {
-            key: Some(wa::MessageKey {
+        protocol_message: wa::message::ProtocolMessage {
+            key: wa::MessageKey {
                 remote_jid: Some(chat_jid.to_string()),
                 from_me: Some(true),
                 id: Some(message_id.to_string()),
                 participant: None,
-            }),
-            r#type: Some(wa::message::protocol_message::Type::MessageEdit as i32),
-            edited_message: Some(Box::new(new_content.clone())),
+            }
+            .into(),
+            r#type: Some(wa::message::protocol_message::Type::MessageEdit),
+            edited_message: new_content.clone().into(),
             timestamp_ms: Some(timestamp_ms),
             ..Default::default()
-        })),
+        }
+        .into(),
         ..Default::default()
     }
 }
@@ -111,16 +115,18 @@ fn build_edit_proto(
 /// the original sender.
 fn build_revoke_proto(chat_jid: &Jid, message_id: &str, participant: Option<&str>) -> wa::Message {
     wa::Message {
-        protocol_message: Some(Box::new(wa::message::ProtocolMessage {
-            key: Some(wa::MessageKey {
+        protocol_message: wa::message::ProtocolMessage {
+            key: wa::MessageKey {
                 remote_jid: Some(chat_jid.to_string()),
                 from_me: Some(true),
                 id: Some(message_id.to_string()),
                 participant: participant.map(|s| s.to_string()),
-            }),
-            r#type: Some(wa::message::protocol_message::Type::Revoke as i32),
+            }
+            .into(),
+            r#type: Some(wa::message::protocol_message::Type::Revoke),
             ..Default::default()
-        })),
+        }
+        .into(),
         ..Default::default()
     }
 }
@@ -132,17 +138,19 @@ fn build_revoke_proto(chat_jid: &Jid, message_id: &str, participant: Option<&str
 /// Full content forwarding requires message storage (v0.2).
 fn build_forward_proto(source_jid: &Jid, original_msg_id: &str) -> wa::Message {
     wa::Message {
-        extended_text_message: Some(Box::new(wa::message::ExtendedTextMessage {
+        extended_text_message: wa::message::ExtendedTextMessage {
             text: Some("[Forwarded message]".to_string()),
-            context_info: Some(Box::new(wa::ContextInfo {
+            context_info: wa::ContextInfo {
                 stanza_id: Some(original_msg_id.to_string()),
                 remote_jid: Some(source_jid.to_string()),
                 is_forwarded: Some(true),
                 forwarding_score: Some(1),
                 ..Default::default()
-            })),
+            }
+            .into(),
             ..Default::default()
-        })),
+        }
+        .into(),
         ..Default::default()
     }
 }
@@ -152,17 +160,19 @@ fn build_reaction_proto(chat_jid: &Jid, message_id: &str, emoji: &str) -> wa::Me
     let timestamp_ms = chrono::Utc::now().timestamp_millis();
 
     wa::Message {
-        reaction_message: Some(wa::message::ReactionMessage {
-            key: Some(wa::MessageKey {
+        reaction_message: wa::message::ReactionMessage {
+            key: wa::MessageKey {
                 remote_jid: Some(chat_jid.to_string()),
                 from_me: Some(true),
                 id: Some(message_id.to_string()),
                 participant: None,
-            }),
+            }
+            .into(),
             text: Some(emoji.to_string()),
             sender_timestamp_ms: Some(timestamp_ms),
             ..Default::default()
-        }),
+        }
+        .into(),
         ..Default::default()
     }
 }
@@ -390,7 +400,7 @@ mod tests {
         let msg = InputMessage::text("hello world");
         let proto = input_to_proto(&msg);
         assert_eq!(proto.conversation.as_deref(), Some("hello world"));
-        assert!(proto.extended_text_message.is_none());
+        assert!(proto.extended_text_message.text.is_none());
     }
 
     #[test]
@@ -398,7 +408,7 @@ mod tests {
         let msg = InputMessage::empty();
         let proto = input_to_proto(&msg);
         assert!(proto.conversation.is_none());
-        assert!(proto.extended_text_message.is_none());
+        assert!(proto.extended_text_message.text.is_none());
     }
 
     #[test]
@@ -406,9 +416,9 @@ mod tests {
         let msg = InputMessage::text("a reply").reply_to(Some("ORIGINAL_MSG_ID"));
         let proto = input_to_proto(&msg);
         assert!(proto.conversation.is_none());
-        let etm = proto.extended_text_message.as_ref().unwrap();
+        let etm = &proto.extended_text_message;
         assert_eq!(etm.text.as_deref(), Some("a reply"));
-        let ctx = etm.context_info.as_ref().unwrap();
+        let ctx = &etm.context_info;
         assert_eq!(ctx.stanza_id.as_deref(), Some("ORIGINAL_MSG_ID"));
     }
 
@@ -417,9 +427,9 @@ mod tests {
         let msg = InputMessage::empty().reply_to(Some("ORIGINAL_MSG_ID"));
         let proto = input_to_proto(&msg);
         assert!(proto.conversation.is_none());
-        let etm = proto.extended_text_message.as_ref().unwrap();
+        let etm = &proto.extended_text_message;
         assert!(etm.text.is_none());
-        let ctx = etm.context_info.as_ref().unwrap();
+        let ctx = &etm.context_info;
         assert_eq!(ctx.stanza_id.as_deref(), Some("ORIGINAL_MSG_ID"));
     }
 
@@ -453,12 +463,9 @@ mod tests {
         let jid = Jid::pn("12345");
         let proto = build_reaction_proto(&jid, "TARGET_MSG_ID", ":heart:️");
 
-        let reaction = proto
-            .reaction_message
-            .as_ref()
-            .expect("should have reaction_message");
+        let reaction = &proto.reaction_message;
         assert_eq!(reaction.text.as_deref(), Some(":heart:️"));
-        let key = reaction.key.as_ref().expect("should have key");
+        let key = &reaction.key;
         assert_eq!(key.remote_jid.as_deref(), Some("12345@s.whatsapp.net"));
         assert_eq!(key.from_me, Some(true));
         assert_eq!(key.id.as_deref(), Some("TARGET_MSG_ID"));
@@ -540,10 +547,10 @@ mod tests {
         };
         let proto = build_edit_proto(&jid, "ORIGINAL_ID", &new_content, 1719000000000);
 
-        let pm = proto.protocol_message.as_ref().unwrap();
+        let pm = &proto.protocol_message;
         assert_eq!(
             pm.r#type,
-            Some(wa::message::protocol_message::Type::MessageEdit as i32)
+            Some(wa::message::protocol_message::Type::MessageEdit)
         );
     }
 
@@ -556,8 +563,8 @@ mod tests {
         };
         let proto = build_edit_proto(&jid, "ORIGINAL_ID", &new_content, 1719000000000);
 
-        let pm = proto.protocol_message.as_ref().unwrap();
-        let key = pm.key.as_ref().unwrap();
+        let pm = &proto.protocol_message;
+        let key = &pm.key;
         assert_eq!(key.remote_jid.as_deref(), Some("12345@s.whatsapp.net"));
         assert_eq!(key.from_me, Some(true));
         assert_eq!(key.id.as_deref(), Some("ORIGINAL_ID"));
@@ -573,8 +580,8 @@ mod tests {
         };
         let proto = build_edit_proto(&jid, "ORIGINAL_ID", &new_content, 1719000000000);
 
-        let pm = proto.protocol_message.as_ref().unwrap();
-        let edited = pm.edited_message.as_ref().unwrap();
+        let pm = &proto.protocol_message;
+        let edited = &pm.edited_message;
         assert_eq!(edited.conversation.as_deref(), Some("edited text"));
     }
 
@@ -584,7 +591,7 @@ mod tests {
         let new_content = wa::Message::default();
         let proto = build_edit_proto(&jid, "ORIGINAL_ID", &new_content, 1719000000000);
 
-        let pm = proto.protocol_message.as_ref().unwrap();
+        let pm = &proto.protocol_message;
         assert_eq!(pm.timestamp_ms, Some(1719000000000));
     }
 
@@ -593,10 +600,10 @@ mod tests {
         let jid = Jid::pn("12345");
         let proto = build_revoke_proto(&jid, "MSG_TO_DELETE", None);
 
-        let pm = proto.protocol_message.as_ref().unwrap();
+        let pm = &proto.protocol_message;
         assert_eq!(
             pm.r#type,
-            Some(wa::message::protocol_message::Type::Revoke as i32)
+            Some(wa::message::protocol_message::Type::Revoke)
         );
     }
 
@@ -605,8 +612,8 @@ mod tests {
         let jid = Jid::pn("12345");
         let proto = build_revoke_proto(&jid, "MSG_TO_DELETE", None);
 
-        let pm = proto.protocol_message.as_ref().unwrap();
-        let key = pm.key.as_ref().unwrap();
+        let pm = &proto.protocol_message;
+        let key = &pm.key;
         assert_eq!(key.remote_jid.as_deref(), Some("12345@s.whatsapp.net"));
         assert_eq!(key.from_me, Some(true));
         assert_eq!(key.id.as_deref(), Some("MSG_TO_DELETE"));
@@ -618,8 +625,8 @@ mod tests {
         let jid = Jid::pn("12345");
         let proto = build_revoke_proto(&jid, "MSG_TO_DELETE", None);
 
-        let pm = proto.protocol_message.as_ref().unwrap();
-        let key = pm.key.as_ref().unwrap();
+        let pm = &proto.protocol_message;
+        let key = &pm.key;
         assert!(key.participant.is_none());
     }
 
@@ -628,8 +635,8 @@ mod tests {
         let jid = Jid::pn("12345");
         let proto = build_revoke_proto(&jid, "MSG_TO_DELETE", Some("99999@s.whatsapp.net"));
 
-        let pm = proto.protocol_message.as_ref().unwrap();
-        let key = pm.key.as_ref().unwrap();
+        let pm = &proto.protocol_message;
+        let key = &pm.key;
         assert_eq!(key.participant.as_deref(), Some("99999@s.whatsapp.net"));
     }
 
@@ -638,8 +645,8 @@ mod tests {
         let jid = Jid::pn("12345");
         let proto = build_revoke_proto(&jid, "MSG_TO_DELETE", None);
 
-        let pm = proto.protocol_message.as_ref().unwrap();
-        assert!(pm.edited_message.is_none());
+        let pm = &proto.protocol_message;
+        assert_eq!(pm.edited_message, wa::Message::default().into());
     }
 
     #[test]
@@ -647,8 +654,8 @@ mod tests {
         let source_jid = Jid::pn("11111");
         let proto = build_forward_proto(&source_jid, "ORIGINAL_MSG");
 
-        let etm = proto.extended_text_message.as_ref().unwrap();
-        let ctx = etm.context_info.as_ref().unwrap();
+        let etm = &proto.extended_text_message;
+        let ctx = &etm.context_info;
         assert_eq!(ctx.is_forwarded, Some(true));
         assert_eq!(ctx.forwarding_score, Some(1));
         assert_eq!(ctx.stanza_id.as_deref(), Some("ORIGINAL_MSG"));
@@ -660,7 +667,7 @@ mod tests {
         let source_jid = Jid::pn("11111");
         let proto = build_forward_proto(&source_jid, "ORIGINAL_MSG");
 
-        let etm = proto.extended_text_message.as_ref().unwrap();
+        let etm = &proto.extended_text_message;
         assert_eq!(etm.text.as_deref(), Some("[Forwarded message]"));
     }
 

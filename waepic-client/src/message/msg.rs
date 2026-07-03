@@ -46,7 +46,7 @@ impl Message {
         self.raw
             .conversation
             .as_deref()
-            .or_else(|| self.raw.extended_text_message.as_ref()?.text.as_deref())
+            .or_else(|| self.raw.extended_text_message.text.as_deref())
     }
 
     /// Whether this message was sent by the current user.
@@ -83,9 +83,7 @@ impl Message {
     pub fn reply_to_id(&self) -> Option<&str> {
         self.raw
             .extended_text_message
-            .as_ref()?
             .context_info
-            .as_ref()?
             .stanza_id
             .as_deref()
     }

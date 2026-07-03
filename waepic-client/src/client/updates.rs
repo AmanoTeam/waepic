@@ -135,7 +135,7 @@ async fn run_update_stream(
                     "receipt" => handle_receipt(&node, &client),
                     "presence" => handle_presence(&node, &client),
                     "chatstate" => handle_chatstate(&node, &client),
-                    "notification" => handle_notification(&node, &client),
+                    "notification" => handle_notification(&node, &client).await,
                     "success" => handle_success(&node),
                     "failure" | "stream:error" => handle_failure(&node),
                     "iq" => handle_pair_code(&node),

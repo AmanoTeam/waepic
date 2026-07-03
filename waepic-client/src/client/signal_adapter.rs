@@ -4,7 +4,7 @@ use std::{error::Error, sync::Arc};
 
 use async_lock::RwLock;
 use async_trait::async_trait;
-use prost::Message as _;
+use buffa::message::Message as _;
 use wacore::{
     libsignal::{
         protocol::{
@@ -198,7 +198,7 @@ impl PreKeyStore for PreKeyAdapter {
             .map_err(signal_err("backend"))?
             .ok_or(SignalProtocolError::InvalidPreKeyId)?;
 
-        let structure = PreKeyRecordStructure::decode(bytes.as_ref())
+        let structure = PreKeyRecordStructure::decode_from_slice(bytes.as_ref())
             .map_err(|e| SignalProtocolError::InvalidArgument(format!("decode prekey: {e}")))?;
         wacore_record::prekey_structure_to_record(structure)
     }
@@ -244,7 +244,7 @@ impl SignedPreKeyStore for SignedPreKeyAdapter {
             .map_err(signal_err("backend"))?
             .ok_or(SignalProtocolError::InvalidSignedPreKeyId)?;
 
-        let structure = SignedPreKeyRecordStructure::decode(bytes.as_slice()).map_err(|e| {
+        let structure = SignedPreKeyRecordStructure::decode_from_slice(bytes.as_slice()).map_err(|e| {
             SignalProtocolError::InvalidArgument(format!("decode signed prekey: {e}"))
         })?;
         wacore_record::signed_prekey_structure_to_record(structure)
@@ -281,6 +281,7 @@ impl wacore::libsignal::protocol::SenderKeyStore for SenderKeyAdapter {
             .cache
             .get_sender_key(sender_key_name, &*self.0.backend)
             .await
+            .map(|opt| opt.map(|arc| (*arc).clone()))
             .map_err(signal_err("backend"))
     }
 }

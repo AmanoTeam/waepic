@@ -20,7 +20,7 @@ use bytes::{Bytes, BytesMut};
 use futures_channel::oneshot;
 use futures_timer::Delay;
 use futures_util::future::{Either, select};
-use prost::Message;
+use buffa::message::Message as _;
 use wacore::{
     framing::FrameDecoder,
     handshake::{XxHandshakeState, build_handshake_header},
@@ -88,7 +88,7 @@ pub(crate) async fn connect_once(fields: &RunnerFields) -> Result<()> {
         Ok(TransportEvent::Connected) => {
             tracing::debug!("transport connected");
         }
-        Ok(TransportEvent::Disconnected) => {
+        Ok(TransportEvent::Disconnected(_)) => {
             return Err(ConnectionError::Socket(
                 "transport disconnected during connect".into(),
             ));
@@ -241,7 +241,7 @@ pub(crate) async fn read_loop(fields: &RunnerFields) -> Result<()> {
                 Ok(TransportEvent::Connected) => {
                     tracing::debug!("transport re-connected event (unexpected in read loop)");
                 }
-                Ok(TransportEvent::Disconnected) => {
+                Ok(TransportEvent::Disconnected(_)) => {
                     tracing::info!("transport disconnected");
                     return Err(ConnectionError::Socket("disconnected".into()));
                 }
@@ -253,13 +253,9 @@ pub(crate) async fn read_loop(fields: &RunnerFields) -> Result<()> {
                 }
             },
             Either::Left((Either::Right((cmd, _)), _)) => match cmd {
-                Ok(ConnectionCommand::SendNode(node)) => {
-                    if let Err(e) = handle_send_node(&transport, &noise_socket, node).await {
-                        tracing::warn!("Failed to send node: {e}");
-                        let _ = fields
-                            .event_tx
-                            .try_broadcast(RawEvent::Error(e.to_string()));
-                    }
+                Ok(ConnectionCommand::SendNode(node, response_tx)) => {
+                    let result = handle_send_node(&transport, &noise_socket, node).await;
+                    let _ = response_tx.send(result);
                 }
                 Ok(ConnectionCommand::Disconnect) => {
                     tracing::info!("disconnect command received");
@@ -350,7 +346,9 @@ pub(crate) async fn process_incoming_frame(
             .children()
             .is_some_and(|children| children.iter().any(|c| c.tag == "pair-success"));
 
-        if !has_pair_success && let Some(server_id) = node.attrs.get("id") {
+        if !has_pair_success
+            && let Some(server_id) = node.attrs.get("id")
+        {
             let server_id_str = server_id.as_str().to_string();
             let mut attrs = Attrs::with_capacity(3);
             attrs.push("type", NodeValue::String("result".into()));
@@ -499,7 +497,7 @@ async fn recv_handshake_frame(
                 continue;
             }
             Ok(Ok(TransportEvent::Connected)) => continue,
-            Ok(Ok(TransportEvent::Disconnected)) => {
+            Ok(Ok(TransportEvent::Disconnected(_))) => {
                 return Err(ConnectionError::Socket(
                     "disconnected during handshake".into(),
                 ));

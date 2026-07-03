@@ -22,7 +22,7 @@ use async_tungstenite::{WebSocketReceiver, WebSocketSender, WebSocketStream, tun
 use bytes::Bytes;
 use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::StreamExt;
-use wacore::net::{Transport, TransportEvent, TransportFactory};
+use wacore::net::{DisconnectReason, Transport, TransportEvent, TransportFactory};
 
 const EVENT_CHANNEL_CAPACITY: usize = 64;
 
@@ -135,7 +135,7 @@ async fn read_pump<S>(
         }
     }
 
-    let _ = tx.send(TransportEvent::Disconnected).await;
+    let _ = tx.send(TransportEvent::Disconnected(DisconnectReason::Unknown)).await;
 }
 
 /// Wrap a WebSocket stream into a [`Transport`] and event receiver pair.

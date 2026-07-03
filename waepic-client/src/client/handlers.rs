@@ -6,7 +6,7 @@
 use std::{str::FromStr, sync::Arc};
 
 use chrono::{DateTime, Utc};
-use prost::Message as _;
+use buffa::message::Message as _;
 use rand::rngs::StdRng;
 use wacore::{
     iq::dirty::{CleanDirtyBitsSpec, DirtyBit, DirtyType},
@@ -19,11 +19,14 @@ use wacore::{
     },
     message_processing::{EncType, categorize_enc_nodes},
     messages::{decode_plaintext, is_sender_key_distribution_only, unwrap_device_sent},
+    pair_code::{PairCodeState, PairCodeUtils},
     request::InfoQuery,
     store::traits::Backend,
     types::message::{MessageInfo, MessageSource},
 };
-use wacore_binary::{Jid, Node, NodeRef, SERVER_JID, builder::NodeBuilder, node::NodeContent};
+use wacore_binary::{
+    Jid, Node, NodeContentRef, NodeRef, SERVER_JID, builder::NodeBuilder, node::NodeContent,
+};
 use waproto::whatsapp as wa;
 
 use crate::{
@@ -105,7 +108,7 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
         }
     };
 
-    let wa_msg = match wa::Message::decode(proto_bytes.as_slice()) {
+    let wa_msg = match wa::Message::decode_from_slice(proto_bytes.as_slice()) {
         Ok(msg) => msg,
         Err(e) => {
             tracing::warn!("failed to decode message protobuf (id={msg_id}): {e}");
@@ -193,8 +196,8 @@ async fn decrypt_e2e_message(
         )
         .await
         {
-            Ok(pt) => {
-                plaintext = Some(pt);
+            Ok(result) => {
+                plaintext = Some(result.plaintext);
                 break; // Use the first successfully decrypted payload
             }
             Err(e) => {
@@ -255,11 +258,10 @@ async fn decrypt_e2e_message(
 
     // Check if this is a sender key distribution message only (no user content)
     wa_msg = unwrap_device_sent(wa_msg);
-    if is_sender_key_distribution_only(&wa_msg) {
-        if let Some(skdm) = &wa_msg.sender_key_distribution_message
-            && let Some(skdm_bytes) = &skdm.axolotl_sender_key_distribution_message
+    if is_sender_key_distribution_only(&mut wa_msg) {
+        if let Some(skdm_bytes) = &wa_msg.sender_key_distribution_message.axolotl_sender_key_distribution_message
         {
-            let group_jid = skdm.group_id.as_deref().unwrap_or("");
+            let group_jid = wa_msg.sender_key_distribution_message.group_id.as_deref().unwrap_or("");
             let sk_name = SenderKeyName::from_jid(&group_jid.to_string(), &sender_address);
 
             if let Ok(skdm_msg) =
@@ -458,8 +460,15 @@ pub(crate) fn handle_chatstate(node: &Node, client: &Client) -> Result<Option<Up
 /// Dispatches by the notification `type` attribute:
 /// - `contacts` with `<update>` child -> [`Update::ContactUpdate`]
 /// - `w:gp2` -> [`Update::GroupUpdate`]
+///
+/// Also checks for `link_code_companion_reg` child (pair-code stage 2 trigger)
+/// before the type-based dispatch.
 #[allow(dead_code)]
-pub(crate) fn handle_notification(node: &Node, client: &Client) -> Result<Option<Update>> {
+pub(crate) async fn handle_notification(node: &Node, client: &Client) -> Result<Option<Update>> {
+    if handle_pair_code_notification(client, node).await? {
+        return Ok(None);
+    }
+
     let notif_type = node
         .attrs
         .get("type")
@@ -471,6 +480,128 @@ pub(crate) fn handle_notification(node: &Node, client: &Client) -> Result<Option
         "w:gp2" => handle_group_notification(node, client),
         _ => Ok(None),
     }
+}
+
+/// Handle the `link_code_companion_reg` notification (pair-code stage 2 trigger).
+///
+/// Called when the user enters the code on their phone. The notification
+/// contains the primary device's encrypted ephemeral public key and identity
+/// public key. Performs DH key exchange and sends the `companion_finish` IQ.
+async fn handle_pair_code_notification(client: &Client, node: &Node) -> Result<bool> {
+    let node_ref = node.as_node_ref();
+    let Some(reg_node) = node_ref.get_optional_child_by_tag(&["link_code_companion_reg"]) else {
+        return Ok(false);
+    };
+
+    let primary_wrapped_ephemeral = match reg_node
+        .get_optional_child_by_tag(&["link_code_pairing_wrapped_primary_ephemeral_pub"])
+        .and_then(|n| match n.content.as_deref() {
+            Some(NodeContentRef::Bytes(b)) if b.len() == 80 => Some(b.to_vec()),
+            _ => None,
+        }) {
+        Some(b) => b,
+        None => {
+            tracing::warn!("missing or invalid primary wrapped ephemeral pub in notification");
+            return Ok(false);
+        }
+    };
+    let primary_identity_pub: [u8; 32] = match reg_node
+        .get_optional_child_by_tag(&["primary_identity_pub"])
+        .and_then(|n| match n.content.as_deref() {
+            Some(NodeContentRef::Bytes(b)) if b.len() == 32 => {
+                <[u8; 32]>::try_from(b.as_ref()).ok()
+            }
+            _ => None,
+        }) {
+        Some(arr) => arr,
+        None => {
+            tracing::warn!("missing or invalid primary identity pub in notification");
+            return Ok(false);
+        }
+    };
+
+    let mut state_guard = client.inner.pair_code_state.lock().await;
+    let state = std::mem::take(&mut *state_guard);
+    drop(state_guard);
+
+    let (pairing_ref, phone_jid, pair_code, ephemeral_keypair) = match state {
+        PairCodeState::WaitingForPhoneConfirmation {
+            pairing_ref,
+            phone_jid,
+            pair_code,
+            ephemeral_keypair,
+            ..
+        } => (pairing_ref, phone_jid, pair_code, ephemeral_keypair),
+        _ => {
+            tracing::warn!("received pair code notification but not in waiting state");
+            return Ok(false);
+        }
+    };
+    tracing::debug!("phone confirmed code entry, processing stage 2");
+
+    let primary_ephemeral_pub = match PairCodeUtils::decrypt_primary_ephemeral_pub(
+        &primary_wrapped_ephemeral,
+        &pair_code,
+    ) {
+        Ok(pub_key) => pub_key,
+        Err(e) => {
+            tracing::warn!("failed to decrypt primary ephemeral pub: {e}");
+            return Ok(false);
+        }
+    };
+
+    let device = client.inner.device.read().await;
+    let (wrapped_bundle, new_adv_secret) = match PairCodeUtils::prepare_key_bundle(
+        &ephemeral_keypair,
+        &primary_ephemeral_pub,
+        &primary_identity_pub,
+        &device.identity_key,
+    ) {
+        Ok(result) => result,
+        Err(e) => {
+            tracing::warn!("failed to prepare key bundle: {e}");
+            return Ok(false);
+        }
+    };
+
+    let identity_pub: [u8; 32] = device
+        .identity_key
+        .public_key
+        .public_key_bytes()
+        .try_into()
+        .expect("identity key is 32 bytes");
+    drop(device);
+
+    {
+        let mut device = client.inner.device.write().await;
+        device.adv_secret_key = new_adv_secret;
+
+        let device_clone = device.clone();
+        drop(device);
+
+        if let Err(e) = client.inner.session.save(&device_clone).await {
+            tracing::warn!("failed to save device after adv secret rotation: {e}");
+        }
+    }
+
+    let req_id = format!("{:016x}", rand::random::<u64>());
+    let iq = PairCodeUtils::build_companion_finish_iq(
+        &phone_jid,
+        wrapped_bundle,
+        &identity_pub,
+        &pairing_ref,
+        req_id,
+    );
+
+    if let Err(e) = client.inner.handle.send_node(iq).await {
+        tracing::warn!("failed to send companion_finish: {e}");
+        return Ok(false);
+    }
+
+    tracing::debug!("sent companion_finish, waiting for pair-success");
+    *client.inner.pair_code_state.lock().await = PairCodeState::Completed;
+
+    Ok(true)
 }
 
 /// Handle `<notification type="contacts">` - contact profile updates.
@@ -565,7 +696,7 @@ pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Result<Vec<Up
             }
         };
 
-    let history_sync = match wa::HistorySync::decode(decompressed.as_slice()) {
+    let history_sync = match wa::HistorySync::decode_from_slice(decompressed.as_slice()) {
         Ok(hs) => hs,
         Err(e) => {
             tracing::warn!("failed to decode HistorySync protobuf: {e}");
@@ -594,9 +725,7 @@ pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Result<Vec<Up
 
         let mut messages = Vec::new();
         for hist_msg in &conv.messages {
-            let Some(web_msg) = &hist_msg.message else {
-                continue;
-            };
+            let web_msg = &hist_msg.message;
 
             let msg_id = web_msg.key.id.clone().unwrap_or_default();
             let from_me = web_msg.key.from_me.unwrap_or(false);
@@ -623,7 +752,7 @@ pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Result<Vec<Up
                 ..Default::default()
             };
 
-            let wa_msg = web_msg.message.clone().unwrap_or_default();
+            let wa_msg = (*web_msg.message).clone();
 
             let chat = client.chat(jid.clone());
             let message = Message::new(wa_msg, info, client.clone(), chat);
@@ -678,7 +807,7 @@ fn extract_history_sync_payload(node: &Node) -> Option<Vec<u8>> {
             }
         };
 
-        let wa_msg = match wa::Message::decode(proto_bytes.as_slice()) {
+        let wa_msg = match wa::Message::decode_from_slice(proto_bytes.as_slice()) {
             Ok(msg) => msg,
             Err(e) => {
                 tracing::warn!("failed to decode history_sync_notification protobuf: {e}");
@@ -686,10 +815,8 @@ fn extract_history_sync_payload(node: &Node) -> Option<Vec<u8>> {
             }
         };
 
-        let notif = wa_msg
-            .protocol_message
-            .and_then(|pm| pm.history_sync_notification)?;
-        return notif.initial_hist_bootstrap_inline_payload;
+        let notif = &wa_msg.protocol_message.history_sync_notification;
+        return notif.initial_hist_bootstrap_inline_payload.clone();
     }
 
     // Form 2: ib node with <history_sync> child
@@ -1070,14 +1197,15 @@ mod tests {
     fn make_history_sync_notification_node(inline_payload: Vec<u8>) -> Node {
         let notif = wa::message::HistorySyncNotification {
             initial_hist_bootstrap_inline_payload: Some(inline_payload),
-            sync_type: Some(wa::message::HistorySyncType::InitialBootstrap as i32),
+            sync_type: Some(wa::message::HistorySyncType::InitialBootstrap),
             ..Default::default()
         };
         let proto_msg = wa::Message {
-            protocol_message: Some(Box::new(wa::message::ProtocolMessage {
-                history_sync_notification: Some(notif),
+            protocol_message: wa::message::ProtocolMessage {
+                history_sync_notification: Some(notif).into(),
                 ..Default::default()
-            })),
+            }
+            .into(),
             ..Default::default()
         };
         let encoded = proto_msg.encode_to_vec();

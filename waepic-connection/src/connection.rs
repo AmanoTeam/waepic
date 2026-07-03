@@ -19,7 +19,6 @@ use std::{
 use async_broadcast::broadcast;
 use async_channel::unbounded;
 use async_lock::Mutex;
-use bytes::Bytes;
 use futures_channel::oneshot;
 use futures_timer::Delay;
 use futures_util::future::{Either, select};
@@ -74,7 +73,7 @@ pub enum RawEvent {
 
 #[allow(dead_code)]
 pub(crate) enum ConnectionCommand {
-    SendNode(Node),
+    SendNode(Node, oneshot::Sender<Result<()>>),
     Disconnect,
 }
 
@@ -117,8 +116,6 @@ pub struct ConnectionRunner {
 pub struct ConnectionHandle {
     cmd_tx: async_channel::Sender<ConnectionCommand>,
     is_connected: Arc<AtomicBool>,
-    transport: Arc<Mutex<Option<Arc<dyn Transport>>>>,
-    noise_socket: Arc<Mutex<Option<Arc<NoiseSocket>>>>,
     iq_waiters: Arc<Mutex<HashMap<String, oneshot::Sender<Result<Node>>>>>,
     iq_id_counter: Arc<AtomicU64>,
 }
@@ -168,8 +165,6 @@ impl Connection {
         let handle = ConnectionHandle {
             cmd_tx,
             is_connected: Arc::clone(&is_connected),
-            transport,
-            noise_socket,
             iq_waiters,
             iq_id_counter,
         };
@@ -261,22 +256,21 @@ impl ConnectionRunner {
 
 impl ConnectionHandle {
     /// Send a protocol node to the server through the encrypted connection.
+    ///
+    /// Routes through the command channel so the read loop processes incoming
+    /// transport events (e.g. pair-device SET IQ) before sending outgoing IQs.
     pub async fn send_node(&self, node: Node) -> Result<()> {
-        let transport = {
-            let t = self.transport.lock().await;
-            t.clone().ok_or(ConnectionError::NotConnected)?
-        };
-        let noise_socket = {
-            let ns = self.noise_socket.lock().await;
-            ns.clone().ok_or(ConnectionError::NotConnected)?
-        };
+        let (response_tx, response_rx) = oneshot::channel();
 
-        let payload = wacore_binary::marshal(&node)
-            .map_err(|e| ConnectionError::Protocol(format!("marshal failed: {e}")))?;
-
-        noise_socket
-            .encrypt_and_send(&transport, Bytes::from(payload))
+        self.cmd_tx
+            .send(ConnectionCommand::SendNode(node, response_tx))
             .await
+            .map_err(|_| ConnectionError::NotConnected)?;
+
+        timeout(Duration::from_secs(30), response_rx)
+            .await
+            .map_err(|_| ConnectionError::Protocol("send_node timed out".into()))?
+            .map_err(|_| ConnectionError::NotConnected)?
     }
 
     /// Send an IQ (Info Query) and await the parsed response.
@@ -287,6 +281,13 @@ impl ConnectionHandle {
         let info_query = iq.build_iq();
         let iq_id = info_query.id.clone().unwrap_or_else(|| self.next_iq_id());
         let iq_node = build_iq_node(&info_query, &iq_id);
+        tracing::debug!(
+            iq_id = %iq_id,
+            tag = %iq_node.tag,
+            attrs = ?iq_node.attrs.iter().collect::<Vec<_>>(),
+            child_tags = ?iq_node.children().map(|c| c.iter().map(|n| n.tag.as_ref()).collect::<Vec<_>>()),
+            "sending IQ node"
+        );
 
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -304,6 +305,27 @@ impl ConnectionHandle {
             .map_err(|_| ConnectionError::NotConnected)??;
 
         let node_ref = response_node.as_node_ref();
+
+        if let Some(type_attr) = node_ref.get_attr("type")
+            && type_attr.as_str() == "error"
+        {
+            let error_text = node_ref
+                .get_optional_child_by_tag(&["error"])
+                .and_then(|e| e.get_attr("text"))
+                .map(|t| t.as_str().to_string())
+                .unwrap_or_else(|| {
+                    let code = node_ref
+                        .get_optional_child_by_tag(&["error"])
+                        .and_then(|e| e.get_attr("code"))
+                        .map(|c| c.as_str().to_string())
+                        .unwrap_or_else(|| "unknown error".to_string());
+                    format!("error code: {code}")
+                });
+            tracing::warn!(id = %iq_id, error = %error_text, "IQ error response");
+
+            return Err(ConnectionError::Protocol(format!("IQ error: {error_text}")));
+        }
+
         iq.parse_response(&node_ref)
             .map_err(|e| ConnectionError::Protocol(format!("IQ parse error: {e}")))
     }
@@ -331,16 +353,16 @@ impl ConnectionHandle {
 
 /// Build an `<iq>` Node from an `InfoQuery` and an ID string.
 fn build_iq_node(info_query: &InfoQuery<'_>, id: &str) -> Node {
-    let mut attrs = Attrs::with_capacity(4);
-    attrs.push("id", NodeValue::String(id.into()));
-    attrs.push("to", NodeValue::Jid(info_query.to.clone()));
-    attrs.push("xmlns", NodeValue::String(info_query.namespace.into()));
-
     let type_str = match info_query.query_type {
         InfoQueryType::Get => "get",
         InfoQueryType::Set => "set",
     };
+
+    let mut attrs = Attrs::with_capacity(4);
+    attrs.push("id", NodeValue::String(id.into()));
+    attrs.push("xmlns", NodeValue::String(info_query.namespace.into()));
     attrs.push("type", NodeValue::String(type_str.into()));
+    attrs.push("to", NodeValue::Jid(info_query.to.clone()));
 
     Node::new("iq", attrs, info_query.content.clone())
 }

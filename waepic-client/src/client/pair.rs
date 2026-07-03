@@ -8,7 +8,7 @@ use std::{sync::Arc, time::Duration};
 use chrono::Utc;
 use futures_timer::Delay;
 use futures_util::future::{Either, select};
-use prost::Message as _;
+use buffa::message::Message as _;
 use rand::{SeedableRng, rngs::StdRng};
 use wacore::{
     companion_reg::companion_web_client_type_for_props,
@@ -18,7 +18,7 @@ use wacore::{
     libsignal::store::record_helpers as wacore_record,
     pair::{DeviceState, PairUtils},
 };
-use wacore_binary::{Jid, Node, NodeContent};
+use wacore_binary::{Attrs, Jid, Node, NodeContent, NodeValue, SERVER_JID};
 
 use waepic_connection::{ConnectionHandle, RawEvent};
 use waepic_session::Session;
@@ -50,7 +50,7 @@ pub enum PairEvent {
 
 /// A stream of [`PairEvent`] values produced by the QR pairing flow.
 ///
-/// Created by [`Client::request_qr_pairing`].
+/// Created by [`Client::request_pairing`].
 /// Call [`recv`](Self::recv) to await the next event.
 #[derive(Debug)]
 pub struct PairEventStream {
@@ -72,11 +72,10 @@ impl PairEventStream {
 impl Client {
     /// Request QR code pairing with the WhatsApp server.
     ///
-    /// Returns a [`PairEventStream`] to receive pairing events and a future
-    /// that drives the pairing flow. The caller must spawn the future on an
-    /// async runtime.
+    /// Returns a [`PairEventStream`] to receive pairing events.
+    /// The pairing flow runs in a background task spawned internally.
     #[tracing::instrument(skip(self))]
-    pub async fn request_qr_pairing(&self) -> Result<(PairEventStream, impl Future<Output = ()>)> {
+    pub async fn request_pairing(&self) -> Result<PairEventStream> {
         let device = self
             .inner
             .session
@@ -99,13 +98,14 @@ impl Client {
         let session = Arc::clone(&self.inner.session);
         let config = self.inner.config.clone();
 
-        let future = async move {
+        async_global_executor::spawn(async move {
             if let Err(e) = run_qr_pairing(handle, session, config, device, tx, raw_rx).await {
                 tracing::error!("qr pairing failed: {e:#}");
             }
-        };
+        })
+        .detach();
 
-        Ok((stream, future))
+        Ok(stream)
     }
 }
 
@@ -123,6 +123,20 @@ async fn run_qr_pairing(
         match raw_rx.recv().await {
             Ok(RawEvent::Node(node)) if is_pair_device_node(&node) => {
                 tracing::debug!("received server-initiated pair-device iq");
+
+                if let Some(server_id) = node.attrs.get("id") {
+                    let server_id_str = server_id.as_str().to_string();
+                    let mut ack_attrs = Attrs::with_capacity(3);
+                    ack_attrs.push("type", NodeValue::String("result".into()));
+                    ack_attrs.push("id", NodeValue::String(server_id_str.clone().into()));
+                    ack_attrs.push("to", NodeValue::String(SERVER_JID.into()));
+                    let ack_node = Node::new("iq", ack_attrs, None);
+
+                    if let Err(e) = handle.send_node(ack_node).await {
+                        tracing::warn!("failed to ack pair-device iq: {e}");
+                    }
+                }
+
                 match extract_pair_device_refs(&node) {
                     Some(r) => {
                         tracing::debug!(ref_count = r.len(), "extracted pairing refs");
@@ -281,7 +295,7 @@ fn extract_pair_device_refs(node: &Node) -> Option<Vec<String>> {
 ///
 /// The server sends pair-success as a `type="set"` IQ (server-initiated),
 /// not `type="get"`.
-fn is_pair_success_node(node: &Node) -> bool {
+pub(crate) fn is_pair_success_node(node: &Node) -> bool {
     if node.tag != "iq" {
         return false;
     }
@@ -300,7 +314,7 @@ fn is_pair_success_node(node: &Node) -> bool {
 }
 
 /// Handle a `<pair-success>` IQ from the server.
-async fn handle_pair_success(
+pub(crate) async fn handle_pair_success(
     handle: &ConnectionHandle,
     session: &Arc<dyn Session>,
     device: &wacore::store::Device,
