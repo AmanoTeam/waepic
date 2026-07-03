@@ -11,7 +11,7 @@ use bytes::Bytes;
 use wacore::{
     appstate::hash::HashState,
     store::{
-        Device, InMemoryBackend,
+        InMemoryBackend,
         error::Result as StoreResult,
         traits::{
             AppStateSyncKey, AppSyncStore, DeviceListRecord, DeviceStore, LidPnMappingEntry,
@@ -300,11 +300,11 @@ impl ProtocolStore for MemorySession {
 
 #[async_trait]
 impl DeviceStore for MemorySession {
-    async fn save(&self, device: &Device) -> StoreResult<()> {
+    async fn save(&self, device: &wacore::store::Device) -> StoreResult<()> {
         self.backend.save(device).await
     }
 
-    async fn load(&self) -> StoreResult<Option<Device>> {
+    async fn load(&self) -> StoreResult<Option<wacore::store::Device>> {
         self.backend.load().await
     }
 

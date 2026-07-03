@@ -13,6 +13,7 @@ wacore.workspace = true
 wacore-binary.workspace = true
 waproto.workspace = true
 
+anyhow.workspace = true
 async-broadcast.workspace = true
 async-channel.workspace = true
 async-lock.workspace = true
@@ -26,6 +27,8 @@ rand.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
-[dev-dependencies]
 compio.workspace = true
+
+[dev-dependencies]
+flate2.workspace = true
 waepic-connection.workspace = true

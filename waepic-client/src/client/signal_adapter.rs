@@ -14,7 +14,7 @@ use wacore::{
         },
         store::{record_helpers as wacore_record, sender_key_name::SenderKeyName},
     },
-    store::{Device, SignalStoreCache, traits::Backend},
+    store::{SignalStoreCache, traits::Backend},
 };
 use waproto::whatsapp::{PreKeyRecordStructure, SignedPreKeyRecordStructure};
 
@@ -28,7 +28,7 @@ where
 /// Shared state for all five sub-adapters.
 #[derive(Clone)]
 struct SharedDevice {
-    device: Arc<RwLock<Device>>,
+    device: Arc<RwLock<wacore::store::Device>>,
     cache: Arc<SignalStoreCache>,
     backend: Arc<dyn Backend>,
 }
@@ -46,7 +46,7 @@ pub struct SenderKeyAdapter(SharedDevice);
 
 impl SenderKeyAdapter {
     pub fn new(
-        device: Arc<RwLock<Device>>,
+        device: Arc<RwLock<wacore::store::Device>>,
         cache: Arc<SignalStoreCache>,
         backend: Arc<dyn Backend>,
     ) -> Self {
@@ -69,7 +69,7 @@ pub struct SignalProtocolStoreAdapter {
 
 impl SignalProtocolStoreAdapter {
     pub fn new(
-        device: Arc<RwLock<Device>>,
+        device: Arc<RwLock<wacore::store::Device>>,
         cache: Arc<SignalStoreCache>,
         backend: Arc<dyn Backend>,
     ) -> Self {
@@ -295,7 +295,7 @@ mod tests {
     #[compio::test]
     async fn adapter_identity_key_pair_is_accessible() {
         let backend: Arc<dyn Backend> = Arc::new(InMemoryBackend::new());
-        let device = Arc::new(RwLock::new(Device::new()));
+        let device = Arc::new(RwLock::new(wacore::store::Device::new()));
         let cache = Arc::new(SignalStoreCache::new());
         let adapter = SignalProtocolStoreAdapter::new(device, cache, backend);
 
@@ -310,7 +310,7 @@ mod tests {
     #[compio::test]
     async fn adapter_registration_id_is_accessible() {
         let backend: Arc<dyn Backend> = Arc::new(InMemoryBackend::new());
-        let device = Arc::new(RwLock::new(Device::new()));
+        let device = Arc::new(RwLock::new(wacore::store::Device::new()));
         let cache = Arc::new(SignalStoreCache::new());
         let adapter = SignalProtocolStoreAdapter::new(device, cache, backend);
 
@@ -325,7 +325,7 @@ mod tests {
     #[compio::test]
     async fn adapter_is_trusted_identity_always_true() {
         let backend: Arc<dyn Backend> = Arc::new(InMemoryBackend::new());
-        let device = Arc::new(RwLock::new(Device::new()));
+        let device = Arc::new(RwLock::new(wacore::store::Device::new()));
         let cache = Arc::new(SignalStoreCache::new());
         let adapter = SignalProtocolStoreAdapter::new(device, cache, backend);
 
@@ -355,7 +355,7 @@ mod tests {
             .await
             .unwrap();
 
-        let device = Arc::new(RwLock::new(Device::new()));
+        let device = Arc::new(RwLock::new(wacore::store::Device::new()));
         let cache = Arc::new(SignalStoreCache::new());
 
         let mut adapter = SignalProtocolStoreAdapter::new(device, cache.clone(), backend.clone());

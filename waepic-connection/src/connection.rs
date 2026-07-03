@@ -321,6 +321,7 @@ impl ConnectionHandle {
         let id = self.iq_id_counter.fetch_add(1, Ordering::Relaxed);
         format!("waepic_{id}")
     }
+
 }
 
 /// Build an `<iq>` Node from an `InfoQuery` and an ID string.
