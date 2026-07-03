@@ -58,12 +58,15 @@ pub mod error;
 pub mod message;
 /// Types relating to WhatsApp chats: users, groups, newsletters, and more.
 pub mod peer;
+/// Event types emitted by the client: [`Update`] and supporting structs.
+pub mod update;
 
 pub use client::Client;
 pub use config::ClientConfiguration;
 pub use error::{AuthError, ClientError, IqError, SendError};
 pub use message::{InputMessage, Message, MessageInfo};
 pub use peer::{Chat, Group, Jid, JidExt, Newsletter, OtherChat, Server, User};
+pub use update::Update;
 
 /// Convenient [`Result`] alias for client operations.
 pub type Result<T> = std::result::Result<T, ClientError>;

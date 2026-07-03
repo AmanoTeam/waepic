@@ -5,7 +5,6 @@
 
 use crate::{Chat, Client, InputMessage, Result};
 
-/// Re-export of message metadata from `wacore`.
 pub use wacore::types::message::MessageInfo;
 
 /// A high-level WhatsApp message, wrapping the protobuf `Message` and
