@@ -30,5 +30,6 @@ tracing.workspace = true
 compio.workspace = true
 
 [dev-dependencies]
-flate2.workspace = true
-waepic-connection.workspace = true
+compio = { workspace = true, features = ["macros"] }
+qr2term.workspace = true
+tracing-subscriber.workspace = true
