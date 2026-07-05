@@ -282,7 +282,7 @@ impl ConnectionHandle {
         let info_query = iq.build_iq();
         let iq_id = info_query.id.clone().unwrap_or_else(|| self.next_iq_id());
         let iq_node = build_iq_node(&info_query, &iq_id);
-        tracing::debug!(
+        tracing::trace!(
             iq_id = %iq_id,
             tag = %iq_node.tag,
             attrs = ?iq_node.attrs.iter().collect::<Vec<_>>(),

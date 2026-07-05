@@ -301,7 +301,7 @@ pub(crate) async fn process_incoming_frame(
         Some(children) => children.iter().map(|c| c.tag.as_ref()).collect(),
         None => vec![],
     };
-    tracing::debug!(
+    tracing::trace!(
         tag = %node.tag,
         type_attr = ?node.attrs.get("type").map(|v| v.as_str().to_string()),
         from_attr = ?node.attrs.get("from").map(|v| v.as_str().to_string()),

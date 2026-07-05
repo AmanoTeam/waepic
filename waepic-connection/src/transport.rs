@@ -60,7 +60,7 @@ where
         let mut guard = self.sink.lock().await;
         let sink = guard.as_mut().ok_or_else(|| anyhow!("socket is closed"))?;
 
-        tracing::debug!("--> sending {} bytes", data.len());
+        tracing::trace!("--> sending {} bytes", data.len());
         sink.send(tungstenite::Message::Binary(data))
             .await
             .map_err(|e| anyhow!("WebSocket send error: {e}"))?;
@@ -104,7 +104,7 @@ async fn read_pump<S>(
             Either::Right((next, _)) => match next {
                 Some(Ok(msg)) if msg.is_binary() => {
                     let payload = msg.into_data();
-                    tracing::debug!("<-- received WebSocket data: {} bytes", payload.len());
+                    tracing::trace!("<-- received WebSocket data: {} bytes", payload.len());
 
                     let inner_shutdown = Box::pin(shutdown_rx.recv());
                     let send_fut = Box::pin(tx.send(TransportEvent::DataReceived(payload)));

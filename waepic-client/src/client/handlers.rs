@@ -279,7 +279,7 @@ async fn decrypt_e2e_message(
                 {
                     tracing::warn!("failed to process SKDM: {e}");
                 } else {
-                    tracing::debug!("processed SKDM for group {group_jid}");
+                    tracing::trace!("processed SKDM for group {group_jid}");
                 }
             }
         }
@@ -1014,7 +1014,7 @@ impl IqSpec for AppStateSyncSpec {
 pub(crate) async fn handle_ib(node: &Node, client: &Client) -> Result<Option<Update>> {
     if let Some(children) = node.children() {
         for child in children.iter() {
-            tracing::debug!("ib child: tag={}", child.tag);
+            tracing::trace!("ib child: tag={}", child.tag);
         }
     }
 
@@ -1040,10 +1040,10 @@ pub(crate) async fn handle_ib(node: &Node, client: &Client) -> Result<Option<Upd
                     tracing::debug!(count = %count, "offline sync completed");
                 }
                 "thread_metadata" => {
-                    tracing::debug!("received thread metadata, ignoring");
+                    tracing::trace!("received thread metadata, ignoring");
                 }
                 _ => {
-                    tracing::debug!(tag = %child.tag, "unhandled ib child");
+                    tracing::trace!(tag = %child.tag, "unhandled ib child");
                 }
             }
         }
@@ -1079,7 +1079,7 @@ fn handle_dirty_child(child: &Node, client: &Client) {
 
     let needs_app_state_resync = bit.dirty_type == DirtyType::SyncdAppState;
 
-    tracing::debug!(
+    tracing::trace!(
         dirty_type = %dirty_type_str,
         timestamp = ?bit.timestamp,
         needs_resync = needs_app_state_resync,
@@ -1101,7 +1101,7 @@ fn handle_dirty_child(child: &Node, client: &Client) {
         };
 
         match handle.send_iq(clean_spec).await {
-            Ok(()) => tracing::debug!("clean dirty bits IQ succeeded for type '{dirty_type}'"),
+            Ok(()) => tracing::trace!("clean dirty bits IQ succeeded for type '{dirty_type}'"),
             Err(e) => tracing::warn!("clean dirty bits IQ failed for type '{dirty_type}': {e}"),
         }
 
@@ -1111,7 +1111,7 @@ fn handle_dirty_child(child: &Node, client: &Client) {
             for &name in APP_STATE_COLLECTIONS {
                 let spec = AppStateSyncSpec::new(name);
                 match handle.send_iq(spec).await {
-                    Ok(()) => tracing::debug!("app state sync IQ succeeded for '{name}'"),
+                    Ok(()) => tracing::trace!("app state sync IQ succeeded for '{name}'"),
                     Err(e) => tracing::warn!("app state sync IQ failed for '{name}': {e}"),
                 }
             }
@@ -1130,7 +1130,7 @@ fn handle_edge_routing_child(child: &Node, client: &Client) {
         && let Some(routing_bytes) = routing_info_node.content_bytes()
         && !routing_bytes.is_empty()
     {
-        tracing::debug!(
+        tracing::trace!(
             bytes = routing_bytes.len(),
             "received edge routing info, storing for reconnection"
         );
