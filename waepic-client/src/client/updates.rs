@@ -117,28 +117,22 @@ async fn run_update_stream(
                     || (tag == "ib" && node.get_optional_child("history_sync").is_some());
 
                 if is_history_sync {
-                    match handle_history_sync(&node, &client) {
-                        Ok(updates) => {
-                            for update in updates {
-                                let _ = tx.send(update).await;
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("error processing history sync: {e}");
-                        }
+                    let updates = handle_history_sync(&node, &client);
+                    for update in updates {
+                        let _ = tx.send(update).await;
                     }
                     continue;
                 }
 
                 let result = match tag {
                     "message" => process_incoming_node(&node, &client).await,
-                    "receipt" => handle_receipt(&node, &client),
-                    "presence" => handle_presence(&node, &client),
-                    "chatstate" => handle_chatstate(&node, &client),
+                    "receipt" => Ok(handle_receipt(&node, &client)),
+                    "presence" => Ok(handle_presence(&node, &client)),
+                    "chatstate" => Ok(handle_chatstate(&node, &client)),
                     "notification" => handle_notification(&node, &client).await,
-                    "success" => handle_success(&node),
-                    "failure" | "stream:error" => handle_failure(&node),
-                    "iq" => handle_pair_code(&node),
+                    "success" => Ok(Some(handle_success(&node))),
+                    "failure" | "stream:error" => Ok(Some(handle_failure(&node))),
+                    "iq" => Ok(handle_pair_code(&node)),
                     "ib" => handle_ib(&node, &client).await,
                     _ => Ok(None), // Unknown node tags are silently ignored
                 };

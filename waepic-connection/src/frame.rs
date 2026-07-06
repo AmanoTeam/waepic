@@ -16,11 +16,11 @@ use std::{
 use async_broadcast::Sender as BroadcastSender;
 use async_channel::Receiver;
 use async_lock::Mutex;
+use buffa::message::Message as _;
 use bytes::{Bytes, BytesMut};
 use futures_channel::oneshot;
 use futures_timer::Delay;
 use futures_util::future::{Either, select};
-use buffa::message::Message as _;
 use wacore::{
     framing::FrameDecoder,
     handshake::{XxHandshakeState, build_handshake_header},
@@ -266,7 +266,7 @@ pub(crate) async fn read_loop(fields: &RunnerFields) -> Result<()> {
                     return Ok(());
                 }
             },
-            Either::Right((_, _)) => {
+            Either::Right(_) => {
                 if let Err(e) = send_keepalive(&transport, &noise_socket).await {
                     tracing::warn!("keepalive failed: {e}");
                     let _ = fields
@@ -307,7 +307,7 @@ pub(crate) async fn process_incoming_frame(
         from_attr = ?node.attrs.get("from").map(|v| v.as_str().to_string()),
         id_attr = ?node.attrs.get("id").map(|v| v.as_str().to_string()),
         xmlns_attr = ?node.attrs.get("xmlns").map(|v| v.as_str().to_string()),
-        child_count = node.children().map(|c| c.len()).unwrap_or(0),
+        child_count = node.children().map_or(0, |c: &[Node]|  c.len()),
         child_tags = ?child_tags,
         "parsed incoming node"
     );
@@ -346,9 +346,7 @@ pub(crate) async fn process_incoming_frame(
             .children()
             .is_some_and(|children| children.iter().any(|c| c.tag == "pair-success"));
 
-        if !has_pair_success
-            && let Some(server_id) = node.attrs.get("id")
-        {
+        if !has_pair_success && let Some(server_id) = node.attrs.get("id") {
             let server_id_str = server_id.as_str().to_string();
             let mut attrs = Attrs::with_capacity(3);
             attrs.push("type", NodeValue::String("result".into()));
@@ -454,8 +452,7 @@ pub(crate) async fn cleanup_connection(fields: &RunnerFields) {
 /// Starts at 2 seconds, caps at 60 seconds.
 pub(crate) fn fibonacci_backoff(attempt: u64) -> Duration {
     let secs = match attempt {
-        0 => BACKOFF_BASE_SECS,
-        1 => BACKOFF_BASE_SECS,
+        0 | 1 => BACKOFF_BASE_SECS,
         _ => {
             let mut a = BACKOFF_BASE_SECS;
             let mut b = BACKOFF_BASE_SECS;
@@ -494,9 +491,8 @@ async fn recv_handshake_frame(
                 if let Some(frame) = frame_decoder.decode_frame() {
                     return Ok(frame);
                 }
-                continue;
             }
-            Ok(Ok(TransportEvent::Connected)) => continue,
+            Ok(Ok(TransportEvent::Connected)) => {}
             Ok(Ok(TransportEvent::Disconnected(_))) => {
                 return Err(ConnectionError::Socket(
                     "disconnected during handshake".into(),

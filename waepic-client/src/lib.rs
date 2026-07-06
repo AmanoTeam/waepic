@@ -19,7 +19,22 @@
 //! [`MessageInfo`]: message::MessageInfo
 //! [`Update`]: update::Update
 
-#![deny(clippy::all)]
+#![deny(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::doc_markdown,
+    clippy::similar_names,
+    clippy::too_many_lines,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::redundant_pub_crate,
+    clippy::needless_pass_by_value
+)]
 
 /// The main [`Client`] handle and its API methods.
 pub mod client;

@@ -46,7 +46,7 @@ fn input_to_proto(msg: &InputMessage) -> wa::Message {
     if let Some(reply_to_id) = msg.reply_to.as_deref() {
         wa::Message {
             extended_text_message: wa::message::ExtendedTextMessage {
-                text: text.map(|t| t.to_string()),
+                text: text.map(ToString::to_string),
                 context_info: wa::ContextInfo {
                     stanza_id: Some(reply_to_id.to_string()),
                     ..Default::default()
@@ -59,7 +59,7 @@ fn input_to_proto(msg: &InputMessage) -> wa::Message {
         }
     } else {
         wa::Message {
-            conversation: text.map(|t| t.to_string()),
+            conversation: text.map(ToString::to_string),
             ..Default::default()
         }
     }
@@ -130,7 +130,7 @@ fn build_revoke_proto(chat_jid: &Jid, message_id: &str, participant: Option<&str
                 remote_jid: Some(chat_jid.to_string()),
                 from_me: Some(true),
                 id: Some(message_id.to_string()),
-                participant: participant.map(|s| s.to_string()),
+                participant: participant.map(ToString::to_string),
             }
             .into(),
             r#type: Some(wa::message::protocol_message::Type::Revoke),

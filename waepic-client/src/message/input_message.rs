@@ -31,18 +31,21 @@ impl InputMessage {
     }
 
     /// Set the message ID this message should reply to, if any.
+    #[must_use]
     pub fn reply_to(mut self, reply_to: Option<impl Into<String>>) -> Self {
         self.reply_to = reply_to.map(Into::into);
         self
     }
 
     /// Whether the message should be sent silently (no notification).
+    #[must_use]
     pub fn silent(mut self, silent: bool) -> Self {
         self.silent = silent;
         self
     }
 
     /// Whether a link preview should be generated for URLs in the text.
+    #[must_use]
     pub fn link_preview(mut self, link_preview: bool) -> Self {
         self.link_preview = link_preview;
         self

@@ -137,21 +137,14 @@ async fn run_qr_pairing(
                     }
                 }
 
-                match extract_pair_device_refs(&node) {
-                    Some(r) => {
-                        tracing::debug!(ref_count = r.len(), "extracted pairing refs");
-                        break r;
-                    }
-                    None => {
-                        tracing::warn!("pair-device iq had no valid refs, waiting for next");
-                        continue;
-                    }
-                }
+                let Some(r) = extract_pair_device_refs(&node) else {
+                    tracing::warn!("pair-device iq had no valid refs, waiting for next");
+                    continue;
+                };
+                tracing::debug!(ref_count = r.len(), "extracted pairing refs");
+                break r;
             }
-            Ok(RawEvent::Disconnected) => {
-                return Err(ClientError::NotConnected);
-            }
-            Err(_) => {
+            Ok(RawEvent::Disconnected) | Err(_) => {
                 return Err(ClientError::NotConnected);
             }
             _ => {}
@@ -258,16 +251,12 @@ fn is_pair_device_node(node: &Node) -> bool {
     if node.tag != "iq" {
         return false;
     }
-    let is_set = node
-        .attrs
+    node.attrs
         .get("type")
-        .map(|v| v.as_str() == "set")
-        .unwrap_or(false);
-    if !is_set {
-        return false;
-    }
-    node.children()
-        .is_some_and(|children| children.iter().any(|c| c.tag == "pair-device"))
+        .is_some_and(|v| v.as_str() == "set")
+        && node
+            .children()
+            .is_some_and(|children| children.iter().any(|c| c.tag == "pair-device"))
 }
 
 /// Extract pairing refs from a server-initiated `<pair-device>` IQ.
@@ -284,7 +273,7 @@ fn extract_pair_device_refs(node: &Node) -> Option<Vec<String>> {
                     _ => None,
                 })
                 .filter_map(|b| std::str::from_utf8(b).ok())
-                .map(|s| s.to_string())
+                .map(ToString::to_string)
                 .collect()
         })
         .unwrap_or_default();
@@ -300,17 +289,12 @@ pub(crate) fn is_pair_success_node(node: &Node) -> bool {
         return false;
     }
 
-    let is_set = node
-        .attrs
+    node.attrs
         .get("type")
-        .map(|v| v.as_str() == "set")
-        .unwrap_or(false);
-    if !is_set {
-        return false;
-    }
-
-    node.children()
-        .is_some_and(|children| children.iter().any(|c| c.tag == "pair-success"))
+        .is_some_and(|v| v.as_str() == "set")
+        && node
+            .children()
+            .is_some_and(|children| children.iter().any(|c| c.tag == "pair-success"))
 }
 
 /// Handle a `<pair-success>` IQ from the server.

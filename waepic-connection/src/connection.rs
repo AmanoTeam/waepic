@@ -313,15 +313,19 @@ impl ConnectionHandle {
             let error_text = node_ref
                 .get_optional_child_by_tag(&["error"])
                 .and_then(|e| e.get_attr("text"))
-                .map(|t| t.as_str().to_string())
-                .unwrap_or_else(|| {
-                    let code = node_ref
-                        .get_optional_child_by_tag(&["error"])
-                        .and_then(|e| e.get_attr("code"))
-                        .map(|c| c.as_str().to_string())
-                        .unwrap_or_else(|| "unknown error".to_string());
-                    format!("error code: {code}")
-                });
+                .map_or_else(
+                    || {
+                        let code = node_ref
+                            .get_optional_child_by_tag(&["error"])
+                            .and_then(|e| e.get_attr("code"))
+                            .map_or_else(
+                                || "unknown error".to_string(),
+                                |c| c.as_str().to_string(),
+                            );
+                        format!("error code: {code}")
+                    },
+                    |t| t.as_str().to_string(),
+                );
             tracing::warn!(id = %iq_id, error = %error_text, "IQ error response");
 
             return Err(ConnectionError::Protocol(format!("IQ error: {error_text}")));

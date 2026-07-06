@@ -12,7 +12,7 @@ use wacore::{
     pair_code::{PairCodeOptions, PairCodeUtils, resolve_companion_platform},
     request::{InfoQuery, InfoQueryType},
 };
-use wacore_binary::{Jid, NodeRef, Server, node::NodeContent};
+use wacore_binary::{Jid, Node, NodeRef, Server, node::NodeContent};
 
 use crate::{Client, Result, error::ClientError, peer::Chat};
 use waepic_connection::RawEvent;
@@ -43,17 +43,14 @@ impl Client {
             .await
             .map_err(|e| ClientError::Internal(format!("failed to load device: {e}")))?;
 
-        match device {
-            Some(d) => {
-                let authorized = d.pn.is_some();
-                tracing::trace!(authorized, "checked");
+        if let Some(d) = device {
+            let authorized = d.pn.is_some();
+            tracing::trace!(authorized, "checked");
 
-                Ok(authorized)
-            }
-            None => {
-                tracing::trace!("no device stored");
-                Ok(false)
-            }
+            Ok(authorized)
+        } else {
+            tracing::trace!("no device stored");
+            Ok(false)
         }
     }
 
@@ -124,10 +121,7 @@ impl Client {
     /// (phone confirmation). Returns the code string to display to the user.
     #[tracing::instrument(skip(self))]
     pub async fn request_pair_code(&self, phone_number: &str) -> Result<String> {
-        let sanitized: String = phone_number
-            .chars()
-            .filter(|c| c.is_ascii_digit())
-            .collect();
+        let sanitized: String = phone_number.chars().filter(char::is_ascii_digit).collect();
 
         if sanitized.is_empty() {
             return Err(ClientError::Internal(
@@ -277,8 +271,10 @@ impl IqSpec for CompanionHelloSpec {
             self.req_id.clone(),
         );
 
-        let children: Vec<wacore_binary::Node> =
-            iq_node.children().map(|c| c.to_vec()).unwrap_or_default();
+        let children = iq_node
+            .children()
+            .map(|c: &[Node]| c.to_vec())
+            .unwrap_or_default();
 
         InfoQuery {
             query_type: InfoQueryType::Set,

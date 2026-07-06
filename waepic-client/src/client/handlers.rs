@@ -25,7 +25,8 @@ use wacore::{
     types::message::{MessageInfo, MessageSource},
 };
 use wacore_binary::{
-    Jid, Node, NodeContentRef, NodeRef, SERVER_JID, builder::NodeBuilder, node::NodeContent,
+    Jid, Node, NodeContentRef, NodeRef, NodeValue, SERVER_JID, builder::NodeBuilder,
+    node::NodeContent,
 };
 use waproto::whatsapp as wa;
 
@@ -53,12 +54,9 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
         return Ok(None);
     }
 
-    let from_jid = match node.attrs.get("from").and_then(|v| v.to_jid()) {
-        Some(jid) => jid,
-        None => {
-            tracing::warn!("message node missing valid 'from' attribute, skipping");
-            return Ok(None);
-        }
+    let Some(from_jid) = node.attrs.get("from").and_then(NodeValue::to_jid) else {
+        tracing::warn!("message node missing valid 'from' attribute, skipping");
+        return Ok(None);
     };
 
     let msg_id = node
@@ -100,12 +98,9 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
 
     // Fallback: plaintext content (our own sent messages echoed back)
     let proto_bytes = extract_plaintext_content(node);
-    let proto_bytes = match proto_bytes {
-        Some(b) => b,
-        None => {
-            tracing::warn!("message node has no decodable content (id={msg_id}), skipping");
-            return Ok(None);
-        }
+    let Some(proto_bytes) = proto_bytes else {
+        tracing::warn!("message node has no decodable content (id={msg_id}), skipping");
+        return Ok(None);
     };
 
     let wa_msg = match wa::Message::decode_from_slice(proto_bytes.as_slice()) {
@@ -159,7 +154,7 @@ async fn decrypt_e2e_message(
     let sender_jid = node
         .attrs
         .get("participant")
-        .and_then(|v| v.to_jid())
+        .and_then(NodeValue::to_jid)
         .unwrap_or_else(|| from_jid.clone());
     let sender_address = ProtocolAddress::new(sender_jid.to_string(), 0.into());
 
@@ -202,7 +197,6 @@ async fn decrypt_e2e_message(
             }
             Err(e) => {
                 tracing::warn!("failed to decrypt session message (id={msg_id}): {e}");
-                continue;
             }
         }
     }
@@ -226,19 +220,15 @@ async fn decrypt_e2e_message(
                 }
                 Err(e) => {
                     tracing::warn!("failed to decrypt group message (id={msg_id}): {e}");
-                    continue;
                 }
             }
         }
     }
 
     // If no decryption succeeded, return None
-    let plaintext = match plaintext {
-        Some(pt) => pt,
-        None => {
-            tracing::warn!("all decryption attempts failed for message (id={msg_id}), skipping");
-            return Ok(None);
-        }
+    let Some(plaintext) = plaintext else {
+        tracing::warn!("all decryption attempts failed for message (id={msg_id}), skipping");
+        return Ok(None);
     };
 
     // Decode the plaintext into a wa::Message
@@ -335,13 +325,10 @@ fn extract_plaintext_content(node: &Node) -> Option<Vec<u8>> {
 /// The node may carry a single message ID in the `id` attribute, or multiple
 /// IDs in `<list><item id="..."/></list>` children.
 #[allow(dead_code)]
-pub(crate) fn handle_receipt(node: &Node, client: &Client) -> Result<Option<Update>> {
-    let from_jid = match node.attrs.get("from").and_then(|v| v.to_jid()) {
-        Some(jid) => jid,
-        None => {
-            tracing::warn!("receipt node missing valid 'from' attribute, skipping");
-            return Ok(None);
-        }
+pub(crate) fn handle_receipt(node: &Node, client: &Client) -> Option<Update> {
+    let Some(from_jid) = node.attrs.get("from").and_then(NodeValue::to_jid) else {
+        tracing::warn!("receipt node missing valid 'from' attribute, skipping");
+        return None;
     };
     let receipt_type = match node.attrs.get("type").map(|v| v.as_str()) {
         Some(s) if s.as_ref() == "read" => ReceiptType::Read,
@@ -375,12 +362,12 @@ pub(crate) fn handle_receipt(node: &Node, client: &Client) -> Result<Option<Upda
 
     let chat = client.chat(from_jid);
 
-    Ok(Some(Update::Receipt(Receipt {
+    Some(Update::Receipt(Receipt {
         chat,
         message_ids,
         receipt_type,
         timestamp,
-    })))
+    }))
 }
 
 /// Process an incoming `<presence>` node and produce an [`Update::Presence`].
@@ -389,13 +376,10 @@ pub(crate) fn handle_receipt(node: &Node, client: &Client) -> Result<Option<Upda
 /// `unavailable` type means the contact went offline; otherwise they are
 /// online. The optional `last` attribute carries the last-seen timestamp.
 #[allow(dead_code)]
-pub(crate) fn handle_presence(node: &Node, client: &Client) -> Result<Option<Update>> {
-    let from_jid = match node.attrs.get("from").and_then(|v| v.to_jid()) {
-        Some(jid) => jid,
-        None => {
-            tracing::warn!("presence node missing valid 'from' attribute, skipping");
-            return Ok(None);
-        }
+pub(crate) fn handle_presence(node: &Node, client: &Client) -> Option<Update> {
+    let Some(from_jid) = node.attrs.get("from").and_then(NodeValue::to_jid) else {
+        tracing::warn!("presence node missing valid 'from' attribute, skipping");
+        return None;
     };
 
     // "unavailable" type means offline; anything else (or missing) means online
@@ -412,11 +396,11 @@ pub(crate) fn handle_presence(node: &Node, client: &Client) -> Result<Option<Upd
 
     let chat = client.chat(from_jid);
 
-    Ok(Some(Update::Presence(Presence {
+    Some(Update::Presence(Presence {
         chat,
         available,
         last_seen,
-    })))
+    }))
 }
 
 /// Process an incoming `<chatstate>` node and produce an [`Update::ChatPresence`].
@@ -425,13 +409,10 @@ pub(crate) fn handle_presence(node: &Node, client: &Client) -> Result<Option<Upd
 /// (`<composing>` or `<paused>`) determines the state. For group chats, the
 /// `participant` attribute identifies the specific sender.
 #[allow(dead_code)]
-pub(crate) fn handle_chatstate(node: &Node, client: &Client) -> Result<Option<Update>> {
-    let from_jid = match node.attrs.get("from").and_then(|v| v.to_jid()) {
-        Some(jid) => jid,
-        None => {
-            tracing::warn!("chatstate node missing valid 'from' attribute, skipping");
-            return Ok(None);
-        }
+pub(crate) fn handle_chatstate(node: &Node, client: &Client) -> Option<Update> {
+    let Some(from_jid) = node.attrs.get("from").and_then(NodeValue::to_jid) else {
+        tracing::warn!("chatstate node missing valid 'from' attribute, skipping");
+        return None;
     };
 
     // Determine the chatstate from child elements
@@ -441,12 +422,12 @@ pub(crate) fn handle_chatstate(node: &Node, client: &Client) -> Result<Option<Up
         ChatPresenceState::Paused
     } else {
         // Unknown or missing child - ignore
-        return Ok(None);
+        return None;
     };
 
     // For group chats, the participant attribute identifies the sender
     let sender =
-        if let Some(participant_jid) = node.attrs.get("participant").and_then(|v| v.to_jid()) {
+        if let Some(participant_jid) = node.attrs.get("participant").and_then(NodeValue::to_jid) {
             client.chat(participant_jid)
         } else {
             client.chat(from_jid.clone())
@@ -454,11 +435,11 @@ pub(crate) fn handle_chatstate(node: &Node, client: &Client) -> Result<Option<Up
 
     let chat = client.chat(from_jid);
 
-    Ok(Some(Update::ChatPresence(ChatPresence {
+    Some(Update::ChatPresence(ChatPresence {
         chat,
         sender,
         state,
-    })))
+    }))
 }
 
 /// Process an incoming `<notification>` node and produce an [`Update`].
@@ -482,8 +463,8 @@ pub(crate) async fn handle_notification(node: &Node, client: &Client) -> Result<
         .unwrap_or_default();
 
     match notif_type.as_str() {
-        "contacts" => handle_contacts_notification(node, client),
-        "w:gp2" => handle_group_notification(node, client),
+        "contacts" => Ok(handle_contacts_notification(node, client)),
+        "w:gp2" => Ok(handle_group_notification(node, client)),
         _ => Ok(None),
     }
 }
@@ -499,49 +480,40 @@ async fn handle_pair_code_notification(client: &Client, node: &Node) -> Result<b
         return Ok(false);
     };
 
-    let primary_wrapped_ephemeral = match reg_node
+    let Some(primary_wrapped_ephemeral) = reg_node
         .get_optional_child_by_tag(&["link_code_pairing_wrapped_primary_ephemeral_pub"])
         .and_then(|n| match n.content.as_deref() {
             Some(NodeContentRef::Bytes(b)) if b.len() == 80 => Some(b.to_vec()),
             _ => None,
-        }) {
-        Some(b) => b,
-        None => {
-            tracing::warn!("missing or invalid primary wrapped ephemeral pub in notification");
-            return Ok(false);
-        }
+        }) else {
+        tracing::warn!("missing or invalid primary wrapped ephemeral pub in notification");
+        return Ok(false);
     };
-    let primary_identity_pub: [u8; 32] = match reg_node
+    let Some(primary_identity_pub): Option<[u8; 32]> = reg_node
         .get_optional_child_by_tag(&["primary_identity_pub"])
         .and_then(|n| match n.content.as_deref() {
             Some(NodeContentRef::Bytes(b)) if b.len() == 32 => {
                 <[u8; 32]>::try_from(b.as_ref()).ok()
             }
             _ => None,
-        }) {
-        Some(arr) => arr,
-        None => {
-            tracing::warn!("missing or invalid primary identity pub in notification");
-            return Ok(false);
-        }
+        }) else {
+        tracing::warn!("missing or invalid primary identity pub in notification");
+        return Ok(false);
     };
 
     let mut state_guard = client.inner.pair_code_state.lock().await;
     let state = std::mem::take(&mut *state_guard);
     drop(state_guard);
 
-    let (pairing_ref, phone_jid, pair_code, ephemeral_keypair) = match state {
-        PairCodeState::WaitingForPhoneConfirmation {
-            pairing_ref,
-            phone_jid,
-            pair_code,
-            ephemeral_keypair,
-            ..
-        } => (pairing_ref, phone_jid, pair_code, ephemeral_keypair),
-        _ => {
-            tracing::warn!("received pair code notification but not in waiting state");
-            return Ok(false);
-        }
+    let PairCodeState::WaitingForPhoneConfirmation {
+        pairing_ref,
+        phone_jid,
+        pair_code,
+        ephemeral_keypair,
+        ..
+    } = state else {
+        tracing::warn!("received pair code notification but not in waiting state");
+        return Ok(false);
     };
     tracing::debug!("phone confirmed code entry, processing stage 2");
 
@@ -611,9 +583,9 @@ async fn handle_pair_code_notification(client: &Client, node: &Node) -> Result<b
 }
 
 /// Handle `<notification type="contacts">` - contact profile updates.
-fn handle_contacts_notification(node: &Node, _client: &Client) -> Result<Option<Update>> {
+fn handle_contacts_notification(node: &Node, _client: &Client) -> Option<Update> {
     if let Some(update_node) = node.get_optional_child("update")
-        && let Some(jid) = update_node.attrs.get("jid").and_then(|v| v.to_jid())
+        && let Some(jid) = update_node.attrs.get("jid").and_then(NodeValue::to_jid)
     {
         let name = update_node
             .attrs
@@ -624,28 +596,25 @@ fn handle_contacts_notification(node: &Node, _client: &Client) -> Result<Option<
             .get("push_name")
             .map(|v| v.as_str().to_string());
 
-        return Ok(Some(Update::ContactUpdate(ContactUpdate {
+        return Some(Update::ContactUpdate(ContactUpdate {
             jid,
             name,
             push_name,
-        })));
+        }));
     }
 
-    Ok(None)
+    None
 }
 
 /// Handle `<notification type="w:gp2">` - group metadata updates.
-fn handle_group_notification(node: &Node, _client: &Client) -> Result<Option<Update>> {
-    let group_jid = match node.attrs.get("from").and_then(|v| v.to_jid()) {
-        Some(jid) => jid,
-        None => {
-            tracing::warn!("group notification missing valid 'from' attribute, skipping");
-            return Ok(None);
-        }
+fn handle_group_notification(node: &Node, _client: &Client) -> Option<Update> {
+    let Some(group_jid) = node.attrs.get("from").and_then(NodeValue::to_jid) else {
+        tracing::warn!("group notification missing valid 'from' attribute, skipping");
+        return None;
     };
     let name = node
         .get_optional_child("subject")
-        .and_then(|s| s.content_as_string())
+        .and_then(wacore_binary::Node::content_as_string)
         .map(|s| s.to_string());
 
     // Collect participants from <add> or <remove> children
@@ -656,7 +625,7 @@ fn handle_group_notification(node: &Node, _client: &Client) -> Result<Option<Upd
                 && let Some(child_children) = child.children()
             {
                 for participant_node in child_children.iter().filter(|c| c.tag == "participant") {
-                    if let Some(jid) = participant_node.attrs.get("jid").and_then(|v| v.to_jid()) {
+                    if let Some(jid) = participant_node.attrs.get("jid").and_then(NodeValue::to_jid) {
                         participants.push(jid);
                     }
                 }
@@ -664,11 +633,11 @@ fn handle_group_notification(node: &Node, _client: &Client) -> Result<Option<Upd
         }
     }
 
-    Ok(Some(Update::GroupUpdate(GroupUpdate {
+    Some(Update::GroupUpdate(GroupUpdate {
         jid: group_jid,
         name,
         participants,
-    })))
+    }))
 }
 
 /// Hard ceiling on the decompressed size of a history-sync blob, preventing
@@ -688,17 +657,16 @@ const MAX_DECOMPRESSED: u64 = 64 * 1024 * 1024;
 /// Returns a [`Vec<Update>`] because a single history sync blob may produce
 /// multiple chunks (one per conversation batch) plus a completion marker.
 #[allow(dead_code)]
-pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Result<Vec<Update>> {
-    let compressed = match extract_history_sync_payload(node) {
-        Some(data) => data,
-        None => return Ok(Vec::new()),
+pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Vec<Update> {
+    let Some(compressed) = extract_history_sync_payload(node) else {
+        return Vec::new();
     };
     let decompressed =
         match wacore_binary::zlib_pool::decompress_zlib_pooled(&compressed, MAX_DECOMPRESSED) {
             Ok(data) => data,
             Err(e) => {
                 tracing::warn!("failed to decompress history sync payload: {e}");
-                return Ok(Vec::new());
+                return Vec::new();
             }
         };
 
@@ -706,7 +674,7 @@ pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Result<Vec<Up
         Ok(hs) => hs,
         Err(e) => {
             tracing::warn!("failed to decode HistorySync protobuf: {e}");
-            return Ok(Vec::new());
+            return Vec::new();
         }
     };
 
@@ -715,12 +683,9 @@ pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Result<Vec<Up
 
     for conv in &history_sync.conversations {
         let chat_jid_str = conv.new_jid.as_deref().unwrap_or(&conv.id);
-        let jid = match Jid::from_str(chat_jid_str) {
-            Ok(j) => j,
-            Err(_) => {
-                tracing::warn!("invalid JID in history sync conversation: {chat_jid_str}");
-                continue;
-            }
+        let Ok(jid) = Jid::from_str(chat_jid_str) else {
+            tracing::warn!("invalid JID in history sync conversation: {chat_jid_str}");
+            continue;
         };
 
         let name = conv.name.clone().filter(|n| !n.is_empty());
@@ -737,12 +702,9 @@ pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Result<Vec<Up
             let from_me = web_msg.key.from_me.unwrap_or(false);
 
             let sender_jid_str = web_msg.key.participant.as_deref().unwrap_or(chat_jid_str);
-            let sender_jid = match Jid::from_str(sender_jid_str) {
-                Ok(j) => j,
-                Err(_) => {
-                    tracing::warn!("invalid sender JID in history sync message: {sender_jid_str}");
-                    continue;
-                }
+            let Ok(sender_jid) = Jid::from_str(sender_jid_str) else {
+                tracing::warn!("invalid sender JID in history sync message: {sender_jid_str}");
+                continue;
             };
 
             let timestamp = web_msg.message_timestamp.unwrap_or(0);
@@ -785,7 +747,7 @@ pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Result<Vec<Up
     // Always emit completion, even if no conversations were processed
     updates.push(Update::HistorySyncCompleted);
 
-    Ok(updates)
+    updates
 }
 
 /// Extract the zlib-compressed history sync payload from a node.
@@ -805,13 +767,11 @@ fn extract_history_sync_payload(node: &Node) -> Option<Vec<u8>> {
     {
         // The node content is a protobuf-encoded wa::Message containing
         // a historySyncNotification field
-        let proto_bytes = match &node.content {
-            Some(NodeContent::Bytes(b)) => b.clone(),
-            _ => {
-                tracing::warn!("history_sync_notification node has no byte content");
-                return None;
-            }
+        let Some(NodeContent::Bytes(proto_bytes)) = &node.content else {
+            tracing::warn!("history_sync_notification node has no byte content");
+            return None;
         };
+        let proto_bytes = proto_bytes.clone();
 
         let wa_msg = match wa::Message::decode_from_slice(proto_bytes.as_slice()) {
             Ok(msg) => msg,
@@ -829,13 +789,11 @@ fn extract_history_sync_payload(node: &Node) -> Option<Vec<u8>> {
     if node.tag == "ib"
         && let Some(hs_child) = node.get_optional_child("history_sync")
     {
-        return match &hs_child.content {
-            Some(NodeContent::Bytes(b)) => Some(b.clone()),
-            _ => {
-                tracing::warn!("<history_sync> child has no byte content");
-                None
-            }
+        let Some(NodeContent::Bytes(b)) = &hs_child.content else {
+            tracing::warn!("<history_sync> child has no byte content");
+            return None;
         };
+        return Some(b.clone());
     }
 
     None
@@ -846,11 +804,10 @@ fn extract_history_sync_payload(node: &Node) -> Option<Vec<u8>> {
 /// The `<success>` node is received after QR or pair-code pairing completes.
 /// The `lid` attribute carries the assigned LID (Lightweight ID).
 #[allow(dead_code)]
-pub(crate) fn handle_success(node: &Node) -> Result<Option<Update>> {
+pub(crate) fn handle_success(_node: &Node) -> Update {
     // Log the LID for debugging; the pairing flow already handles the full
     // pair-success processing. This handler just signals the application.
-    let _lid = node.attrs.get("lid").map(|v| v.as_str().to_string());
-    Ok(Some(Update::PairSuccess))
+    Update::PairSuccess
 }
 
 /// Process an incoming `<failure>` or `<stream:error>` node and produce
@@ -858,8 +815,8 @@ pub(crate) fn handle_success(node: &Node) -> Result<Option<Update>> {
 ///
 /// These nodes indicate the session has been invalidated server-side.
 #[allow(dead_code)]
-pub(crate) fn handle_failure(_node: &Node) -> Result<Option<Update>> {
-    Ok(Some(Update::LoggedOut))
+pub(crate) fn handle_failure(_node: &Node) -> Update {
+    Update::LoggedOut
 }
 
 /// Process a server-initiated `<pair-code>` IQ (type="set") and produce
@@ -869,22 +826,19 @@ pub(crate) fn handle_failure(_node: &Node) -> Result<Option<Update>> {
 /// instead of responding directly to our set IQ. This handler catches those
 /// push notifications.
 #[allow(dead_code)]
-pub(crate) fn handle_pair_code(node: &Node) -> Result<Option<Update>> {
+pub(crate) fn handle_pair_code(node: &Node) -> Option<Update> {
     if node.tag != "iq" {
-        return Ok(None);
+        return None;
     }
     let is_set = node
         .attrs
         .get("type")
         .is_some_and(|v| v.as_str().as_ref() == "set");
     if !is_set {
-        return Ok(None);
+        return None;
     }
 
-    let pair_code = match node.get_optional_child("pair-code") {
-        Some(pc) => pc,
-        None => return Ok(None),
-    };
+    let pair_code = node.get_optional_child("pair-code")?;
 
     let code = pair_code
         .attrs
@@ -900,10 +854,10 @@ pub(crate) fn handle_pair_code(node: &Node) -> Result<Option<Update>> {
 
     if code.is_empty() {
         tracing::warn!("pair-code IQ missing 'code' attribute");
-        return Ok(None);
+        return None;
     }
 
-    Ok(Some(Update::PairingCode { code, timeout }))
+    Some(Update::PairingCode { code, timeout })
 }
 
 /// App state collection names that the server uses in `<dirty>` notifications
@@ -1019,13 +973,13 @@ impl IqSpec for AppStateSyncSpec {
 #[allow(dead_code)]
 pub(crate) async fn handle_ib(node: &Node, client: &Client) -> Result<Option<Update>> {
     if let Some(children) = node.children() {
-        for child in children.iter() {
+        for child in children {
             tracing::trace!("ib child: tag={}", child.tag);
         }
     }
 
     if let Some(children) = node.children() {
-        for child in children.iter() {
+        for child in children {
             match child.tag.as_ref() {
                 "dirty" => handle_dirty_child(child, client),
                 "edge_routing" => handle_edge_routing_child(child, client),
@@ -1066,12 +1020,9 @@ pub(crate) async fn handle_ib(node: &Node, client: &Client) -> Result<Option<Upd
 /// 2. If the type is `syncd_app_state`, request a full re-sync of all
 ///    app state collections.
 fn handle_dirty_child(child: &Node, client: &Client) {
-    let dirty_type_str = match child.attrs.get("type").map(|v| v.as_str().to_string()) {
-        Some(t) => t,
-        None => {
-            tracing::warn!("dirty notification missing 'type' attribute, skipping");
-            return;
-        }
+    let Some(dirty_type_str) = child.attrs.get("type").map(|v| v.as_str().to_string()) else {
+        tracing::warn!("dirty notification missing 'type' attribute, skipping");
+        return;
     };
     let timestamp_str = child.attrs.get("timestamp").map(|v| v.as_str().to_string());
 
@@ -1160,8 +1111,7 @@ mod tests {
     fn success_node_produces_pair_success() {
         let node = NodeBuilder::new("success").attr("lid", "12345@lid").build();
 
-        let result = handle_success(&node).unwrap();
-        let update = result.expect("should produce an update");
+        let update = handle_success(&node);
 
         assert!(
             matches!(update, Update::PairSuccess),
@@ -1173,8 +1123,7 @@ mod tests {
     fn failure_node_produces_logged_out() {
         let node = NodeBuilder::new("failure").build();
 
-        let result = handle_failure(&node).unwrap();
-        let update = result.expect("should produce an update");
+        let update = handle_failure(&node);
 
         assert!(
             matches!(update, Update::LoggedOut),
@@ -1188,8 +1137,7 @@ mod tests {
             .children([NodeBuilder::new("conflict").build()])
             .build();
 
-        let result = handle_failure(&node).unwrap();
-        let update = result.expect("should produce an update");
+        let update = handle_failure(&node);
 
         assert!(
             matches!(update, Update::LoggedOut),
@@ -1283,7 +1231,7 @@ mod tests {
                 .build()])
             .build();
 
-        let result = handle_pair_code(&node).unwrap();
+        let result = handle_pair_code(&node);
         let update = result.expect("should produce an update");
 
         match update {
@@ -1305,7 +1253,7 @@ mod tests {
                 .build()])
             .build();
 
-        let result = handle_pair_code(&node).unwrap();
+        let result = handle_pair_code(&node);
         let update = result.expect("should produce an update");
 
         match update {
@@ -1323,7 +1271,7 @@ mod tests {
             .children([NodeBuilder::new("pair-code").attr("code", "TEST").build()])
             .build();
 
-        let result = handle_pair_code(&node).unwrap();
+        let result = handle_pair_code(&node);
         assert!(result.is_none());
     }
 
@@ -1334,7 +1282,7 @@ mod tests {
             .children([NodeBuilder::new("pair-code").attr("code", "TEST").build()])
             .build();
 
-        let result = handle_pair_code(&node).unwrap();
+        let result = handle_pair_code(&node);
         assert!(result.is_none());
     }
 
@@ -1345,7 +1293,7 @@ mod tests {
             .children([NodeBuilder::new("pair-code").attr("timeout", "60").build()])
             .build();
 
-        let result = handle_pair_code(&node).unwrap();
+        let result = handle_pair_code(&node);
         assert!(result.is_none());
     }
 
@@ -1356,7 +1304,7 @@ mod tests {
             .children([NodeBuilder::new("other").build()])
             .build();
 
-        let result = handle_pair_code(&node).unwrap();
+        let result = handle_pair_code(&node);
         assert!(result.is_none());
     }
 
