@@ -62,6 +62,16 @@ pub enum Update {
     PairSuccess,
     /// History sync has fully completed (all chunks processed).
     HistorySyncCompleted,
+    /// Server is about to deliver N offline messages.
+    OfflineSyncPreview {
+        /// Number of offline messages pending delivery.
+        count: u32,
+    },
+    /// Offline sync finished, N messages delivered.
+    OfflineSyncCompleted {
+        /// Number of offline messages that were delivered.
+        count: u32,
+    },
     /// Raw decoded protocol node, forwarded before router dispatch.
     /// Only emitted when raw-node forwarding is enabled on the client.
     Raw(Node),

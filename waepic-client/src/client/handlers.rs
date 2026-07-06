@@ -5,8 +5,8 @@
 
 use std::{str::FromStr, sync::Arc};
 
-use chrono::{DateTime, Utc};
 use buffa::message::Message as _;
+use chrono::{DateTime, Utc};
 use rand::rngs::StdRng;
 use wacore::{
     iq::dirty::{CleanDirtyBitsSpec, DirtyBit, DirtyType},
@@ -259,9 +259,15 @@ async fn decrypt_e2e_message(
     // Check if this is a sender key distribution message only (no user content)
     wa_msg = unwrap_device_sent(wa_msg);
     if is_sender_key_distribution_only(&mut wa_msg) {
-        if let Some(skdm_bytes) = &wa_msg.sender_key_distribution_message.axolotl_sender_key_distribution_message
+        if let Some(skdm_bytes) = &wa_msg
+            .sender_key_distribution_message
+            .axolotl_sender_key_distribution_message
         {
-            let group_jid = wa_msg.sender_key_distribution_message.group_id.as_deref().unwrap_or("");
+            let group_jid = wa_msg
+                .sender_key_distribution_message
+                .group_id
+                .as_deref()
+                .unwrap_or("");
             let sk_name = SenderKeyName::from_jid(&group_jid.to_string(), &sender_address);
 
             if let Ok(skdm_msg) =
@@ -1027,17 +1033,17 @@ pub(crate) async fn handle_ib(node: &Node, client: &Client) -> Result<Option<Upd
                     let count = child
                         .attrs
                         .get("count")
-                        .map(|v| v.as_str().to_string())
-                        .unwrap_or_default();
-                    tracing::info!(count = %count, "received offline sync preview");
+                        .and_then(|v| v.as_str().parse::<u32>().ok())
+                        .unwrap_or(0);
+                    return Ok(Some(Update::OfflineSyncPreview { count }));
                 }
                 "offline" => {
                     let count = child
                         .attrs
                         .get("count")
-                        .map(|v| v.as_str().to_string())
-                        .unwrap_or_default();
-                    tracing::debug!(count = %count, "offline sync completed");
+                        .and_then(|v| v.as_str().parse::<u32>().ok())
+                        .unwrap_or(0);
+                    return Ok(Some(Update::OfflineSyncCompleted { count }));
                 }
                 "thread_metadata" => {
                     tracing::trace!("received thread metadata, ignoring");
