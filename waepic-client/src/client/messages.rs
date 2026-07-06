@@ -1,17 +1,27 @@
 //! Message operations: send, edit, delete, forward, react, and mark as read.
 
 use std::{
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use buffa::message::Message as _;
-use wacore_binary::{Jid, Node, builder::NodeBuilder};
+use chrono::Utc;
+use wacore::{
+    client::context::GroupInfo,
+    send::{SignalStores, prepare_dm_stanza, prepare_group_stanza},
+    types::message::AddressingMode,
+};
+use wacore_binary::{Jid, JidExt, Node, builder::NodeBuilder};
 use waproto::whatsapp as wa;
 
 use crate::{
     Result,
-    client::Client,
+    client::{self, Client, context::RuntimeHandle},
+    error::ClientError,
     message::{InputMessage, Message, MessageInfo},
     peer::Chat,
 };
@@ -20,7 +30,7 @@ use crate::{
 static MSG_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Generate a WhatsApp-format message ID ("3EB0" + 18 hex chars).
-fn generate_message_id() -> String {
+pub(crate) fn generate_message_id() -> String {
     let count = MSG_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -157,7 +167,7 @@ fn build_forward_proto(source_jid: &Jid, original_msg_id: &str) -> wa::Message {
 
 /// Build a reaction protobuf message for the given target message and emoji.
 fn build_reaction_proto(chat_jid: &Jid, message_id: &str, emoji: &str) -> wa::Message {
-    let timestamp_ms = chrono::Utc::now().timestamp_millis();
+    let timestamp_ms = Utc::now().timestamp_millis();
 
     wa::Message {
         reaction_message: wa::message::ReactionMessage {
@@ -191,7 +201,7 @@ fn build_reaction_node(to: &Jid, msg_id: &str, proto: &wa::Message) -> Node {
 
 /// Build a read receipt (`<receipt type="read">`) node.
 fn build_read_receipt_node(to: &Jid, message_ids: &[&str]) -> Node {
-    let timestamp = chrono::Utc::now().timestamp().to_string();
+    let timestamp = Utc::now().timestamp().to_string();
 
     NodeBuilder::new("receipt")
         .attr("to", to)
@@ -203,6 +213,10 @@ fn build_read_receipt_node(to: &Jid, message_ids: &[&str]) -> Node {
 
 impl Client {
     /// Send a message to a chat.
+    ///
+    /// For newsletters, sends plaintext. For DMs and groups, encrypts via
+    /// the Signal protocol using wacore's `prepare_dm_stanza` and
+    /// `prepare_group_stanza`.
     #[tracing::instrument(skip(self, chat))]
     pub async fn send_message(
         &self,
@@ -214,11 +228,101 @@ impl Client {
         let msg_id = generate_message_id();
         let proto = input_to_proto(&message);
 
-        let node = build_message_node(&jid, &msg_id, &proto);
+        // Newsletters are plaintext channels - keep the existing path.
+        if chat.is_newsletter() {
+            let node = build_message_node(&jid, &msg_id, &proto);
+            self.inner.handle.send_node(node).await?;
 
+            let now = Utc::now();
+            let info = MessageInfo {
+                id: msg_id.clone(),
+                source: wacore::types::message::MessageSource {
+                    chat: jid.clone(),
+                    sender: jid,
+                    is_from_me: true,
+                    ..Default::default()
+                },
+                timestamp: now,
+                ..Default::default()
+            };
+
+            return Ok(Message::new(proto, info, self.clone(), chat));
+        }
+
+        let device = self.inner.device.read().await;
+        let own_jid = device.pn.clone().ok_or(ClientError::NotLoggedIn)?;
+        let own_lid = device.lid.clone();
+        let account = device.account.clone();
+
+        let runtime = RuntimeHandle::new();
+        let backend = Arc::clone(&self.inner.session);
+        let mut adapter = client::signal_adapter::SignalProtocolStoreAdapter::new(
+            Arc::clone(&self.inner.device),
+            Arc::clone(&self.inner.signal_cache),
+            backend,
+        );
+
+        let mut stores = SignalStores {
+            sender_key_store: &mut adapter.sender_key_store,
+            session_store: &mut adapter.session_store,
+            identity_store: &mut adapter.identity_store,
+            prekey_store: &mut adapter.pre_key_store,
+            signed_prekey_store: &adapter.signed_pre_key_store,
+        };
+
+        let node = if jid.is_group() {
+            let group_info = Arc::new(GroupInfo::new(vec![], AddressingMode::Pn));
+            let own_lid = own_lid
+                .ok_or_else(|| ClientError::Internal("LID not set, cannot send to group".into()))?;
+
+            let prepared = prepare_group_stanza(
+                &runtime,
+                &mut stores,
+                self,
+                &group_info,
+                &own_jid,
+                &own_lid,
+                account.as_deref(),
+                jid.clone(),
+                &proto,
+                msg_id.clone(),
+                false,
+                None,
+                None,
+                None,
+                &[],
+                None,
+            )
+            .await
+            .map_err(|e| ClientError::EncryptSend(format!("group encrypt failed: {e}")))?;
+
+            prepared.node
+        } else {
+            let prepared = prepare_dm_stanza(
+                &runtime,
+                &mut stores,
+                self,
+                &own_jid,
+                own_lid.as_ref(),
+                account.as_deref(),
+                jid.clone(),
+                &proto,
+                msg_id.clone(),
+                None,
+                &[],
+                vec![],
+                None,
+            )
+            .await
+            .map_err(|e| ClientError::EncryptSend(format!("dm encrypt failed: {e}")))?;
+
+            prepared.node
+        };
+
+        drop(device);
         self.inner.handle.send_node(node).await?;
 
-        let now = chrono::Utc::now();
+        let now = Utc::now();
         let info = MessageInfo {
             id: msg_id.clone(),
             source: wacore::types::message::MessageSource {
@@ -284,7 +388,7 @@ impl Client {
         let jid = chat.id().clone();
         let new_msg_id = generate_message_id();
         let new_content = input_to_proto(&new_text);
-        let timestamp_ms = chrono::Utc::now().timestamp_millis();
+        let timestamp_ms = Utc::now().timestamp_millis();
 
         let proto = build_edit_proto(&jid, message_id, &new_content, timestamp_ms);
         let node = build_message_node(&jid, &new_msg_id, &proto);
@@ -601,10 +705,7 @@ mod tests {
         let proto = build_revoke_proto(&jid, "MSG_TO_DELETE", None);
 
         let pm = &proto.protocol_message;
-        assert_eq!(
-            pm.r#type,
-            Some(wa::message::protocol_message::Type::Revoke)
-        );
+        assert_eq!(pm.r#type, Some(wa::message::protocol_message::Type::Revoke));
     }
 
     #[test]

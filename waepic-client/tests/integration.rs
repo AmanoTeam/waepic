@@ -156,8 +156,11 @@ async fn test_send_text_message() {
         Err(e) => {
             let msg = e.to_string();
             assert!(
-                msg.contains("not connected") || msg.contains("NotConnected"),
-                "expected NotConnected error, got: {msg}"
+                msg.contains("not connected")
+                    || msg.contains("NotConnected")
+                    || msg.contains("not logged in")
+                    || msg.contains("NotLoggedIn"),
+                "expected NotConnected or NotLoggedIn error, got: {msg}"
             );
         }
         Ok(_) => unreachable!(),
@@ -328,10 +331,7 @@ async fn test_edit_delete() {
     };
 
     let pm = &revoke_proto.protocol_message;
-    assert_eq!(
-        pm.r#type,
-        Some(wa::message::protocol_message::Type::Revoke)
-    );
+    assert_eq!(pm.r#type, Some(wa::message::protocol_message::Type::Revoke));
     let key = &pm.key;
     assert_eq!(key.id.as_deref(), Some("MSG_TO_DELETE"));
     assert_eq!(pm.edited_message, wa::Message::default().into());

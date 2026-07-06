@@ -5,6 +5,8 @@
 
 /// Authentication status and login-check helpers.
 pub mod auth;
+/// Runtime-agnostic executor and SendContextResolver for E2E encryption.
+pub mod context;
 /// Incoming node handlers that convert raw protocol nodes into `Update` events.
 pub mod handlers;
 /// Message operations: send, edit, delete, forward, react, and mark as read.
@@ -19,8 +21,8 @@ pub mod updates;
 use std::{fmt, sync::Arc};
 
 use async_lock::{Mutex, RwLock};
-use chrono::Utc;
 use buffa::message::Message as _;
+use chrono::Utc;
 use wacore::{
     libsignal::store::record_helpers as wacore_record, pair_code::PairCodeState,
     store::SignalStoreCache,
