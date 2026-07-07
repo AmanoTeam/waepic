@@ -13,14 +13,14 @@ use chrono::Utc;
 use wacore::{
     client::context::GroupInfo,
     send::{SignalStores, prepare_dm_stanza, prepare_group_stanza},
-    types::message::AddressingMode,
+    types::message::{AddressingMode, MessageSource},
 };
 use wacore_binary::{Jid, JidExt, Node, builder::NodeBuilder};
 use waproto::whatsapp as wa;
 
 use crate::{
     Result,
-    client::{self, Client, context::RuntimeHandle},
+    client::{Client, context::RuntimeHandle, signal_adapter::SignalProtocolStoreAdapter},
     error::ClientError,
     message::{InputMessage, Message, MessageInfo},
     peer::Chat,
@@ -36,6 +36,7 @@ pub(crate) fn generate_message_id() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
+
     format!("3EB0{timestamp:0>8x}{count:0>10x}")
 }
 
@@ -256,7 +257,7 @@ impl Client {
 
         let runtime = RuntimeHandle::new();
         let backend = Arc::clone(&self.inner.session);
-        let mut adapter = client::signal_adapter::SignalProtocolStoreAdapter::new(
+        let mut adapter = SignalProtocolStoreAdapter::new(
             Arc::clone(&self.inner.device),
             Arc::clone(&self.inner.signal_cache),
             backend,
@@ -325,7 +326,7 @@ impl Client {
         let now = Utc::now();
         let info = MessageInfo {
             id: msg_id.clone(),
-            source: wacore::types::message::MessageSource {
+            source: MessageSource {
                 chat: jid.clone(),
                 sender: jid,
                 is_from_me: true,
@@ -471,11 +472,14 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+
     use super::*;
 
     #[test]
     fn generate_message_id_has_correct_prefix() {
         let id = generate_message_id();
+
         assert!(
             id.starts_with("3EB0"),
             "message ID should start with 3EB0, got: {id}"
@@ -485,6 +489,7 @@ mod tests {
     #[test]
     fn generate_message_id_has_correct_length() {
         let id = generate_message_id();
+
         assert_eq!(
             id.len(),
             22,
@@ -496,6 +501,7 @@ mod tests {
     fn generate_message_id_is_unique() {
         let id1 = generate_message_id();
         let id2 = generate_message_id();
+
         assert_ne!(id1, id2, "consecutive message IDs should be unique");
     }
 
@@ -503,6 +509,7 @@ mod tests {
     fn input_to_proto_simple_text() {
         let msg = InputMessage::text("hello world");
         let proto = input_to_proto(&msg);
+
         assert_eq!(proto.conversation.as_deref(), Some("hello world"));
         assert!(proto.extended_text_message.text.is_none());
     }
@@ -511,6 +518,7 @@ mod tests {
     fn input_to_proto_empty_text() {
         let msg = InputMessage::empty();
         let proto = input_to_proto(&msg);
+
         assert!(proto.conversation.is_none());
         assert!(proto.extended_text_message.text.is_none());
     }
@@ -520,8 +528,10 @@ mod tests {
         let msg = InputMessage::text("a reply").reply_to(Some("ORIGINAL_MSG_ID"));
         let proto = input_to_proto(&msg);
         assert!(proto.conversation.is_none());
+
         let etm = &proto.extended_text_message;
         assert_eq!(etm.text.as_deref(), Some("a reply"));
+
         let ctx = &etm.context_info;
         assert_eq!(ctx.stanza_id.as_deref(), Some("ORIGINAL_MSG_ID"));
     }
@@ -531,15 +541,16 @@ mod tests {
         let msg = InputMessage::empty().reply_to(Some("ORIGINAL_MSG_ID"));
         let proto = input_to_proto(&msg);
         assert!(proto.conversation.is_none());
+
         let etm = &proto.extended_text_message;
         assert!(etm.text.is_none());
+
         let ctx = &etm.context_info;
         assert_eq!(ctx.stanza_id.as_deref(), Some("ORIGINAL_MSG_ID"));
     }
 
     #[test]
     fn build_message_node_has_correct_structure() {
-        use std::borrow::Cow;
         let jid = Jid::pn("12345");
         let proto = wa::Message {
             conversation: Some("test".to_string()),
@@ -569,6 +580,7 @@ mod tests {
 
         let reaction = &proto.reaction_message;
         assert_eq!(reaction.text.as_deref(), Some(":heart:️"));
+
         let key = &reaction.key;
         assert_eq!(key.remote_jid.as_deref(), Some("12345@s.whatsapp.net"));
         assert_eq!(key.from_me, Some(true));
@@ -579,7 +591,6 @@ mod tests {
 
     #[test]
     fn build_reaction_node_has_correct_structure() {
-        use std::borrow::Cow;
         let jid = Jid::pn("12345");
         let proto = build_reaction_proto(&jid, "TARGET_MSG_ID", ":+1:");
         let node = build_reaction_node(&jid, "3EB0REACT", &proto);
@@ -597,6 +608,7 @@ mod tests {
             node.attrs.get("id").map(|v| v.as_str()),
             Some(Cow::Borrowed("3EB0REACT"))
         );
+
         let plaintext = node
             .get_optional_child("plaintext")
             .expect("should have plaintext child");
@@ -605,7 +617,6 @@ mod tests {
 
     #[test]
     fn build_read_receipt_node_has_correct_structure() {
-        use std::borrow::Cow;
         let jid = Jid::pn("12345");
         let node = build_read_receipt_node(&jid, &["MSG_ID_001"]);
 

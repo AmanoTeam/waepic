@@ -7,14 +7,16 @@ use async_trait::async_trait;
 use buffa::message::Message as _;
 use wacore::{
     libsignal::{
+        self,
         protocol::{
             Direction, IdentityChange, IdentityKey, IdentityKeyPair, IdentityKeyStore, PreKeyId,
-            PreKeyRecord, PreKeyStore, ProtocolAddress, SessionRecord, SessionStore,
-            SignalProtocolError, SignedPreKeyId, SignedPreKeyRecord, SignedPreKeyStore,
+            PreKeyRecord, PreKeyStore, ProtocolAddress, SenderKeyRecord, SenderKeyStore,
+            SessionRecord, SessionStore, SignalProtocolError, SignedPreKeyId, SignedPreKeyRecord,
+            SignedPreKeyStore,
         },
         store::{record_helpers as wacore_record, sender_key_name::SenderKeyName},
     },
-    store::{SignalStoreCache, traits::Backend},
+    store::{Device, SignalStoreCache, traits::Backend},
 };
 use waproto::whatsapp::{PreKeyRecordStructure, SignedPreKeyRecordStructure};
 
@@ -28,7 +30,7 @@ where
 /// Shared state for all five sub-adapters.
 #[derive(Clone)]
 struct SharedDevice {
-    device: Arc<RwLock<wacore::store::Device>>,
+    device: Arc<RwLock<Device>>,
     cache: Arc<SignalStoreCache>,
     backend: Arc<dyn Backend>,
 }
@@ -52,7 +54,7 @@ pub struct SenderKeyAdapter(SharedDevice);
 impl SenderKeyAdapter {
     /// Create a new sender key adapter from shared device state, cache, and backend.
     pub fn new(
-        device: Arc<RwLock<wacore::store::Device>>,
+        device: Arc<RwLock<Device>>,
         cache: Arc<SignalStoreCache>,
         backend: Arc<dyn Backend>,
     ) -> Self {
@@ -82,7 +84,7 @@ pub struct SignalProtocolStoreAdapter {
 impl SignalProtocolStoreAdapter {
     /// Create a new composite store from shared device state, cache, and backend.
     pub fn new(
-        device: Arc<RwLock<wacore::store::Device>>,
+        device: Arc<RwLock<Device>>,
         cache: Arc<SignalStoreCache>,
         backend: Arc<dyn Backend>,
     ) -> Self {
@@ -189,8 +191,7 @@ impl IdentityKeyStore for IdentityAdapter {
             .map_err(signal_err("get_identity"))?
         {
             Some(data) if !data.is_empty() => {
-                let public_key =
-                    wacore::libsignal::protocol::PublicKey::from_djb_public_key_bytes(&data)?;
+                let public_key = libsignal::protocol::PublicKey::from_djb_public_key_bytes(&data)?;
                 Ok(Some(IdentityKey::new(public_key)))
             }
             _ => Ok(None),
@@ -257,9 +258,10 @@ impl SignedPreKeyStore for SignedPreKeyAdapter {
             .map_err(signal_err("backend"))?
             .ok_or(SignalProtocolError::InvalidSignedPreKeyId)?;
 
-        let structure = SignedPreKeyRecordStructure::decode_from_slice(bytes.as_slice()).map_err(|e| {
-            SignalProtocolError::InvalidArgument(format!("decode signed prekey: {e}"))
-        })?;
+        let structure =
+            SignedPreKeyRecordStructure::decode_from_slice(bytes.as_slice()).map_err(|e| {
+                SignalProtocolError::InvalidArgument(format!("decode signed prekey: {e}"))
+            })?;
         wacore_record::signed_prekey_structure_to_record(structure)
     }
 
@@ -273,12 +275,12 @@ impl SignedPreKeyStore for SignedPreKeyAdapter {
 }
 
 #[async_trait]
-impl wacore::libsignal::protocol::SenderKeyStore for SenderKeyAdapter {
+impl SenderKeyStore for SenderKeyAdapter {
     async fn store_sender_key(
         &mut self,
         sender_key_name: &SenderKeyName,
-        record: wacore::libsignal::protocol::SenderKeyRecord,
-    ) -> wacore::libsignal::protocol::error::Result<()> {
+        record: SenderKeyRecord,
+    ) -> libsignal::protocol::error::Result<()> {
         self.0.cache.put_sender_key(sender_key_name, record).await;
         Ok(())
     }
@@ -286,9 +288,7 @@ impl wacore::libsignal::protocol::SenderKeyStore for SenderKeyAdapter {
     async fn load_sender_key(
         &self,
         sender_key_name: &SenderKeyName,
-    ) -> wacore::libsignal::protocol::error::Result<
-        Option<wacore::libsignal::protocol::SenderKeyRecord>,
-    > {
+    ) -> libsignal::protocol::error::Result<Option<SenderKeyRecord>> {
         let _device = self.0.device.read().await;
         self.0
             .cache
@@ -302,14 +302,14 @@ impl wacore::libsignal::protocol::SenderKeyStore for SenderKeyAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wacore::store::in_memory::InMemoryBackend;
+    use wacore::store::{in_memory::InMemoryBackend, traits::SignalStore};
 
     const PREKEY_ID: u32 = 7777;
 
     #[compio::test]
     async fn adapter_identity_key_pair_is_accessible() {
-        let backend: Arc<dyn Backend> = Arc::new(InMemoryBackend::new());
-        let device = Arc::new(RwLock::new(wacore::store::Device::new()));
+        let backend = Arc::new(InMemoryBackend::new());
+        let device = Arc::new(RwLock::new(Device::new()));
         let cache = Arc::new(SignalStoreCache::new());
         let adapter = SignalProtocolStoreAdapter::new(device, cache, backend);
 
@@ -323,8 +323,8 @@ mod tests {
 
     #[compio::test]
     async fn adapter_registration_id_is_accessible() {
-        let backend: Arc<dyn Backend> = Arc::new(InMemoryBackend::new());
-        let device = Arc::new(RwLock::new(wacore::store::Device::new()));
+        let backend = Arc::new(InMemoryBackend::new());
+        let device = Arc::new(RwLock::new(Device::new()));
         let cache = Arc::new(SignalStoreCache::new());
         let adapter = SignalProtocolStoreAdapter::new(device, cache, backend);
 
@@ -338,8 +338,8 @@ mod tests {
 
     #[compio::test]
     async fn adapter_is_trusted_identity_always_true() {
-        let backend: Arc<dyn Backend> = Arc::new(InMemoryBackend::new());
-        let device = Arc::new(RwLock::new(wacore::store::Device::new()));
+        let backend = Arc::new(InMemoryBackend::new());
+        let device = Arc::new(RwLock::new(Device::new()));
         let cache = Arc::new(SignalStoreCache::new());
         let adapter = SignalProtocolStoreAdapter::new(device, cache, backend);
 
@@ -361,7 +361,7 @@ mod tests {
 
     #[compio::test]
     async fn remove_pre_key_deletes_immediately() {
-        let backend: Arc<dyn Backend> = Arc::new(InMemoryBackend::new());
+        let backend = Arc::new(InMemoryBackend::new());
         let structure = PreKeyRecordStructure::default();
         let encoded = structure.encode_to_vec();
         backend
@@ -369,7 +369,7 @@ mod tests {
             .await
             .unwrap();
 
-        let device = Arc::new(RwLock::new(wacore::store::Device::new()));
+        let device = Arc::new(RwLock::new(Device::new()));
         let cache = Arc::new(SignalStoreCache::new());
 
         let mut adapter = SignalProtocolStoreAdapter::new(device, cache.clone(), backend.clone());

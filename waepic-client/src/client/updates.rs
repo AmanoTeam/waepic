@@ -4,9 +4,9 @@
 //! the WhatsApp connection - messages, connection state changes, receipts,
 //! and presence updates all flow through this stream.
 
-use std::{future::Future, sync::Arc};
+use std::future::Future;
 
-use wacore::{iq::usync::DeviceListSpec, store::traits::Backend};
+use wacore::iq::usync::DeviceListSpec;
 use wacore_binary::builder::NodeBuilder;
 use waepic_connection::RawEvent;
 
@@ -90,7 +90,7 @@ async fn run_update_stream(
     mut raw_rx: async_broadcast::Receiver<RawEvent>,
     tx: async_channel::Sender<Update>,
 ) {
-    let mut event_count: u64 = 0;
+    let mut event_count = 0u64;
 
     loop {
         let event = match raw_rx.recv().await {
@@ -166,7 +166,7 @@ async fn run_update_stream(
                 // to force a reconnect, and after reconnect the Connected
                 // handler fires. We must reload from backend to see the
                 // fresh device state with pn set.
-                let backend: Arc<dyn Backend> = client.inner.session.clone();
+                let backend = client.inner.session.clone();
                 match backend.load().await {
                     Ok(Some(fresh_device)) => {
                         // Update the in-memory RwLock with the fresh device
@@ -233,7 +233,7 @@ async fn run_update_stream(
 
         // Flush cache every 100 events to persist Signal state
         if event_count.is_multiple_of(100) {
-            let backend: Arc<dyn Backend> = client.inner.session.clone();
+            let backend = client.inner.session.clone();
             if let Err(e) = client.inner.signal_cache.flush(&*backend).await {
                 tracing::warn!("failed to flush signal cache: {e}");
             }

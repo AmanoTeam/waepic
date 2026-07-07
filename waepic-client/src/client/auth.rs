@@ -9,12 +9,12 @@ use rand::rngs::StdRng;
 use wacore::{
     iq::spec::IqSpec,
     libsignal::protocol::KeyPair,
-    pair_code::{PairCodeOptions, PairCodeUtils, resolve_companion_platform},
+    pair_code::{PairCodeOptions, PairCodeState, PairCodeUtils, resolve_companion_platform},
     request::{InfoQuery, InfoQueryType},
 };
 use wacore_binary::{Jid, Node, NodeRef, Server, node::NodeContent};
 
-use crate::{Client, Result, error::ClientError, peer::Chat};
+use crate::{Client, Result, client, error::ClientError, peer::Chat};
 use waepic_connection::RawEvent;
 
 /// Whether the client has an authenticated session.
@@ -121,8 +121,10 @@ impl Client {
     /// (phone confirmation). Returns the code string to display to the user.
     #[tracing::instrument(skip(self))]
     pub async fn request_pair_code(&self, phone_number: &str) -> Result<String> {
-        let sanitized: String = phone_number.chars().filter(char::is_ascii_digit).collect();
-
+        let sanitized = phone_number
+            .chars()
+            .filter(char::is_ascii_digit)
+            .collect::<String>();
         if sanitized.is_empty() {
             return Err(ClientError::Internal(
                 "phone number must contain at least one digit".into(),
@@ -181,15 +183,14 @@ impl Client {
         })?;
         tracing::debug!("stage 1 complete, waiting for phone confirmation");
 
-        *self.inner.pair_code_state.lock().await =
-            wacore::pair_code::PairCodeState::WaitingForPhoneConfirmation {
-                pairing_ref,
-                phone_jid: sanitized,
-                pair_code: code.clone(),
-                ephemeral_keypair: Box::new(ephemeral_keypair),
-                code_generation_ts: 0,
-                primary_hello_attempt_count: 0,
-            };
+        *self.inner.pair_code_state.lock().await = PairCodeState::WaitingForPhoneConfirmation {
+            pairing_ref,
+            phone_jid: sanitized,
+            pair_code: code.clone(),
+            ephemeral_keypair: Box::new(ephemeral_keypair),
+            code_generation_ts: 0,
+            primary_hello_attempt_count: 0,
+        };
 
         let raw_tx = self.inner.raw_tx.clone();
         let handle = self.inner.handle.clone();
@@ -203,11 +204,11 @@ impl Client {
             loop {
                 match raw_rx.recv().await {
                     Ok(RawEvent::Node(node)) => {
-                        if crate::client::pair::is_pair_success_node(&node) {
+                        if client::pair::is_pair_success_node(&node) {
                             tracing::debug!("received pair-success for pair code flow");
 
                             let dev = device.read().await.clone();
-                            match crate::client::pair::handle_pair_success(
+                            match client::pair::handle_pair_success(
                                 &handle, &session, &dev, &node, &config,
                             )
                             .await

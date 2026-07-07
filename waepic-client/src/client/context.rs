@@ -1,6 +1,13 @@
 //! Runtime-agnostic executor and SendContextResolver for E2E encryption.
 
-use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc, thread, time::Duration};
+use std::{
+    collections::HashMap,
+    future::{self, Future},
+    pin::Pin,
+    sync::Arc,
+    thread,
+    time::Duration,
+};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -8,8 +15,8 @@ use futures_timer::Delay;
 use wacore::{
     client::context::{GroupInfo, SendContextResolver},
     iq::{
-        prekeys::{PreKeyBundle, PreKeyFetchReason, PreKeyFetchSpec},
-        usync::{DeviceListResponse, DeviceListSpec},
+        prekeys::{PreKeyFetchReason, PreKeyFetchSpec},
+        usync::DeviceListSpec,
     },
     libsignal::protocol::PreKeyBundle as LibsignalPreKeyBundle,
     runtime::{AbortHandle, Runtime},
@@ -59,7 +66,7 @@ impl Runtime for RuntimeHandle {
         thread::spawn(move || {
             f();
         });
-        Box::pin(std::future::ready(()))
+        Box::pin(future::ready(()))
     }
 
     fn yield_now(&self) -> Option<Pin<Box<dyn Future<Output = ()> + Send>>> {
@@ -70,16 +77,16 @@ impl Runtime for RuntimeHandle {
 #[async_trait]
 impl SendContextResolver for Client {
     async fn resolve_devices(&self, jids: &[Jid]) -> Result<Vec<Jid>, anyhow::Error> {
-        let jids_vec: Vec<Jid> = jids.to_vec();
+        let jids_vec = jids.to_vec();
         let sid = client::messages::generate_message_id();
         let spec = DeviceListSpec::new(jids_vec, sid);
 
-        let response: DeviceListResponse = self
+        let response = self
             .inner
             .handle
             .send_iq(spec)
             .await
-            .map_err(|e| anyhow::anyhow!("device list IQ failed: {e}"))?;
+            .map_err(|e| anyhow!("device list IQ failed: {e}"))?;
 
         let mut device_jids = Vec::new();
         for user_list in &response.device_lists {
@@ -99,12 +106,12 @@ impl SendContextResolver for Client {
         jids: &[Jid],
     ) -> Result<HashMap<Jid, LibsignalPreKeyBundle>, anyhow::Error> {
         let spec = PreKeyFetchSpec::new(jids.to_vec());
-        let bundles: HashMap<Jid, PreKeyBundle> = self
+        let bundles = self
             .inner
             .handle
             .send_iq(spec)
             .await
-            .map_err(|e| anyhow::anyhow!("prekey fetch IQ failed: {e}"))?;
+            .map_err(|e| anyhow!("prekey fetch IQ failed: {e}"))?;
 
         Ok(bundles)
     }
@@ -114,7 +121,7 @@ impl SendContextResolver for Client {
         jids: &[Jid],
     ) -> Result<HashMap<Jid, LibsignalPreKeyBundle>, anyhow::Error> {
         let spec = PreKeyFetchSpec::with_reason(jids.to_vec(), PreKeyFetchReason::Identity);
-        let bundles: HashMap<Jid, PreKeyBundle> = self
+        let bundles = self
             .inner
             .handle
             .send_iq(spec)

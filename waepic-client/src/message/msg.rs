@@ -98,7 +98,7 @@ impl Message {
 
     /// Send a reply to this message.
     pub async fn reply(&self, msg: impl Into<InputMessage>) -> Result<Message> {
-        let reply_msg: InputMessage = msg.into();
+        let reply_msg = msg.into();
         let reply_msg = reply_msg.reply_to(Some(self.id().to_owned()));
 
         self.client.send_message(self.chat.clone(), reply_msg).await

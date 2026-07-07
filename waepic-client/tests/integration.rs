@@ -6,7 +6,6 @@
 use std::sync::Arc;
 
 use buffa::message::Message as _;
-use wacore::store::traits::Backend;
 use wacore_binary::{
     Jid, Node, SERVER_JID,
     builder::NodeBuilder,
@@ -23,7 +22,7 @@ use waproto::whatsapp as wa;
 fn make_test_client() -> Client {
     let session = Arc::new(MemorySession::new());
     let config = ClientConfiguration::default();
-    let backend: Arc<dyn Backend> = session.clone();
+    let backend = session.clone();
     let (_runner, _event_tx, handle) = Connection::new(backend, config.connection.clone());
     Client::new(handle, session, config)
 }

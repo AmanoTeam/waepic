@@ -194,7 +194,7 @@ impl ConnectionRunner {
             logged_out: self.logged_out,
         };
 
-        let mut reconnect_attempt: u64 = 0;
+        let mut reconnect_attempt = 0u64;
 
         loop {
             if fields.logged_out.load(Ordering::SeqCst) {

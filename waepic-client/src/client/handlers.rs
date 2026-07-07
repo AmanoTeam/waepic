@@ -3,15 +3,18 @@
 //! Each handler processes a raw protocol `Node` and produces an
 //! `Update` event for the application layer.
 
-use std::{str::FromStr, sync::Arc};
+use std::{mem, str::FromStr};
 
 use buffa::message::Message as _;
 use chrono::{DateTime, Utc};
 use rand::rngs::StdRng;
 use wacore::{
-    iq::dirty::{CleanDirtyBitsSpec, DirtyBit, DirtyType},
-    iq::spec::IqSpec,
+    iq::{
+        dirty::{CleanDirtyBitsSpec, DirtyBit, DirtyType},
+        spec::IqSpec,
+    },
     libsignal::{
+        self,
         protocol::{
             CiphertextMessage, PreKeySignalMessage, ProtocolAddress, SignalMessage, UsePQRatchet,
         },
@@ -21,12 +24,11 @@ use wacore::{
     messages::{decode_plaintext, is_sender_key_distribution_only, unwrap_device_sent},
     pair_code::{PairCodeState, PairCodeUtils},
     request::InfoQuery,
-    store::traits::Backend,
     types::message::{MessageInfo, MessageSource},
 };
 use wacore_binary::{
     Jid, Node, NodeContentRef, NodeRef, NodeValue, SERVER_JID, builder::NodeBuilder,
-    node::NodeContent,
+    node::NodeContent, zlib_pool,
 };
 use waproto::whatsapp as wa;
 
@@ -81,9 +83,14 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
         .unwrap_or_else(Utc::now);
 
     // Check for <enc> children for E2E decryption
-    let enc_children: Vec<&Node> = node
+    let enc_children = node
         .children()
-        .map(|children| children.iter().filter(|c| c.tag == "enc").collect())
+        .map(|children| {
+            children
+                .iter()
+                .filter(|c| c.tag == "enc")
+                .collect::<Vec<&Node>>()
+        })
         .unwrap_or_default();
     if !enc_children.is_empty() {
         return decrypt_e2e_message(
@@ -147,7 +154,7 @@ async fn decrypt_e2e_message(
 ) -> Result<Option<Update>> {
     let categorized = categorize_enc_nodes(enc_children);
 
-    let backend: Arc<dyn Backend> = client.inner.session.clone() as Arc<dyn Backend>;
+    let backend = client.inner.session.clone();
     let device = client.inner.device.clone();
     let cache = client.inner.signal_cache.clone();
 
@@ -160,7 +167,7 @@ async fn decrypt_e2e_message(
         .unwrap_or_else(|| from_jid.clone());
     let sender_address = ProtocolAddress::new(sender_jid.to_string(), 0.into());
 
-    let mut plaintext: Option<Vec<u8>> = None;
+    let mut plaintext = None;
     for enc_info in &categorized.session_enc {
         let ct_msg = match enc_info.enc_type {
             EncType::PreKeyMessage => match PreKeySignalMessage::try_from(enc_info.ciphertext) {
@@ -181,7 +188,7 @@ async fn decrypt_e2e_message(
         };
 
         let mut csprng = rand::make_rng::<StdRng>();
-        match wacore::libsignal::protocol::message_decrypt(
+        match libsignal::protocol::message_decrypt(
             &ct_msg,
             &sender_address,
             &mut adapter.session_store,
@@ -209,7 +216,7 @@ async fn decrypt_e2e_message(
             let group_jid = from_jid.to_string();
             let sk_name = SenderKeyName::from_jid(&group_jid, &sender_address);
 
-            match wacore::libsignal::protocol::group_decrypt(
+            match libsignal::protocol::group_decrypt(
                 enc_info.ciphertext,
                 &mut adapter.sender_key_store,
                 &sk_name,
@@ -263,17 +270,14 @@ async fn decrypt_e2e_message(
             let sk_name = SenderKeyName::from_jid(&group_jid.to_string(), &sender_address);
 
             if let Ok(skdm_msg) =
-                wacore::libsignal::protocol::SenderKeyDistributionMessage::try_from(
-                    skdm_bytes.as_slice(),
-                )
+                libsignal::protocol::SenderKeyDistributionMessage::try_from(skdm_bytes.as_slice())
             {
-                if let Err(e) =
-                    wacore::libsignal::protocol::process_sender_key_distribution_message(
-                        &sk_name,
-                        &skdm_msg,
-                        &mut adapter.sender_key_store,
-                    )
-                    .await
+                if let Err(e) = libsignal::protocol::process_sender_key_distribution_message(
+                    &sk_name,
+                    &skdm_msg,
+                    &mut adapter.sender_key_store,
+                )
+                .await
                 {
                     tracing::warn!("failed to process SKDM: {e}");
                 } else {
@@ -495,7 +499,7 @@ async fn handle_pair_code_notification(client: &Client, node: &Node) -> Result<b
         tracing::warn!("missing or invalid primary wrapped ephemeral pub in notification");
         return Ok(false);
     };
-    let Some(primary_identity_pub): Option<[u8; 32]> = reg_node
+    let Some(primary_identity_pub) = reg_node
         .get_optional_child_by_tag(&["primary_identity_pub"])
         .and_then(|n| match n.content.as_deref() {
             Some(NodeContentRef::Bytes(b)) if b.len() == 32 => {
@@ -509,7 +513,7 @@ async fn handle_pair_code_notification(client: &Client, node: &Node) -> Result<b
     };
 
     let mut state_guard = client.inner.pair_code_state.lock().await;
-    let state = std::mem::take(&mut *state_guard);
+    let state = mem::take(&mut *state_guard);
     drop(state_guard);
 
     let PairCodeState::WaitingForPhoneConfirmation {
@@ -626,7 +630,7 @@ fn handle_group_notification(node: &Node, _client: &Client) -> Option<Update> {
         .map(|s| s.to_string());
 
     // Collect participants from <add> or <remove> children
-    let mut participants: Vec<Jid> = Vec::new();
+    let mut participants = Vec::<Jid>::new();
     if let Some(children) = node.children() {
         for child in children {
             if (child.tag == "add" || child.tag == "remove")
@@ -755,14 +759,13 @@ pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Vec<Update> {
     let Some(compressed) = extract_history_sync_payload(node) else {
         return Vec::new();
     };
-    let decompressed =
-        match wacore_binary::zlib_pool::decompress_zlib_pooled(&compressed, MAX_DECOMPRESSED) {
-            Ok(data) => data,
-            Err(e) => {
-                tracing::warn!("failed to decompress history sync payload: {e}");
-                return Vec::new();
-            }
-        };
+    let decompressed = match zlib_pool::decompress_zlib_pooled(&compressed, MAX_DECOMPRESSED) {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("failed to decompress history sync payload: {e}");
+            return Vec::new();
+        }
+    };
 
     let history_sync = match wa::HistorySync::decode_from_slice(decompressed.as_slice()) {
         Ok(hs) => hs,
@@ -943,7 +946,7 @@ pub(crate) fn handle_failure(node: &Node) -> Update {
         let reason = ConnectFailureReason::from_i32(code);
         let message = node
             .get_optional_child("text")
-            .and_then(wacore_binary::Node::content_as_string)
+            .and_then(Node::content_as_string)
             .map(|s| s.to_string())
             .unwrap_or_default();
         return Update::ConnectFailure(ConnectFailure { reason, message });
@@ -983,13 +986,11 @@ pub(crate) fn handle_pair_code(node: &Node) -> Option<Update> {
     }
 
     let pair_code = node.get_optional_child("pair-code")?;
-
     let code = pair_code
         .attrs
         .get("code")
         .map(|v| v.as_str().to_string())
         .unwrap_or_default();
-
     let timeout = pair_code
         .attrs
         .get("timeout")
@@ -1237,6 +1238,7 @@ fn handle_edge_routing_child(child: &Node, client: &Client) {
         );
         let routing_bytes = routing_bytes.to_vec();
         let device = client.inner.device.clone();
+
         compio::runtime::spawn(async move {
             let mut device_guard = device.write().await;
             device_guard.edge_routing_info = Some(routing_bytes);
@@ -1268,7 +1270,6 @@ mod tests {
         let node = NodeBuilder::new("success").attr("lid", "12345@lid").build();
 
         let update = handle_success(&node);
-
         assert!(
             matches!(update, Update::PairSuccess),
             "expected PairSuccess, got {update:?}"
@@ -1280,7 +1281,6 @@ mod tests {
         let node = NodeBuilder::new("failure").build();
 
         let update = handle_failure(&node);
-
         assert!(
             matches!(update, Update::LoggedOut),
             "expected LoggedOut, got {update:?}"
@@ -1294,7 +1294,6 @@ mod tests {
             .build();
 
         let update = handle_failure(&node);
-
         assert!(
             matches!(update, Update::StreamReplaced),
             "expected StreamReplaced, got {update:?}"
@@ -1306,7 +1305,6 @@ mod tests {
         let node = NodeBuilder::new("stream:error").attr("code", "400").build();
 
         let update = handle_failure(&node);
-
         assert!(
             matches!(update, Update::ConnectFailure(_)),
             "expected ConnectFailure, got {update:?}"
@@ -1321,7 +1319,6 @@ mod tests {
             .build();
 
         let update = handle_failure(&node);
-
         assert!(
             matches!(
                 update,
@@ -1339,7 +1336,6 @@ mod tests {
         let node = NodeBuilder::new("failure").attr("code", "405").build();
 
         let update = handle_failure(&node);
-
         assert!(
             matches!(update, Update::ClientOutdated),
             "expected ClientOutdated, got {update:?}"
@@ -1351,7 +1347,6 @@ mod tests {
         let node = NodeBuilder::new("stream:error").build();
 
         let update = handle_failure(&node);
-
         assert!(
             matches!(update, Update::StreamError(StreamError { ref code }) if code.is_empty()),
             "expected StreamError with empty code, got {update:?}"
@@ -1568,6 +1563,7 @@ mod tests {
     #[test]
     fn app_state_sync_spec_new_requests_snapshot() {
         let spec = AppStateSyncSpec::new("critical_block");
+
         assert!(spec.wants_snapshot(), "version 0 should request snapshot");
         assert_eq!(spec.name, "critical_block");
         assert_eq!(spec.version, 0);
@@ -1576,6 +1572,7 @@ mod tests {
     #[test]
     fn app_state_sync_spec_after_version_does_not_request_snapshot() {
         let spec = AppStateSyncSpec::after_version("regular_high", 42);
+
         assert!(
             !spec.wants_snapshot(),
             "version > 0 should not request snapshot"
@@ -1632,6 +1629,7 @@ mod tests {
             Some(NodeContent::Nodes(n)) => n.clone(),
             _ => panic!("expected NodeContent::Nodes"),
         };
+
         let collection = nodes[0]
             .get_optional_child("collection")
             .expect("should have <collection> child");

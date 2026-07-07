@@ -24,8 +24,8 @@ use async_lock::{Mutex, RwLock};
 use buffa::message::Message as _;
 use chrono::Utc;
 use wacore::{
-    libsignal::store::record_helpers as wacore_record, pair_code::PairCodeState,
-    store::SignalStoreCache,
+    iq::devices::RemoveCompanionDeviceSpec, libsignal::store::record_helpers as wacore_record,
+    pair_code::PairCodeState, store::SignalStoreCache,
 };
 use wacore_binary::{Jid, JidExt, Server};
 use waepic_connection::{Connection, ConnectionHandle, ConnectionRunner, RawEvent};
@@ -183,7 +183,6 @@ impl Client {
     pub async fn logout(&self) -> Result<()> {
         let device = self.inner.device.read().await;
         if let Some(pn) = &device.pn {
-            use wacore::iq::devices::RemoveCompanionDeviceSpec;
             if let Err(e) = self
                 .inner
                 .handle

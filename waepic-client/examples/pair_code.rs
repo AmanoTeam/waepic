@@ -16,7 +16,7 @@
 //!
 //! The phone number should be in international format (with or without + prefix).
 
-use std::sync::Arc;
+use std::{env, sync::Arc};
 
 use async_signal::{Signal, Signals};
 use futures_util::StreamExt;
@@ -31,7 +31,7 @@ async fn main() {
         .with_max_level(Level::DEBUG)
         .init();
 
-    let args: Vec<String> = std::env::args().collect();
+    let args = env::args().collect::<Vec<String>>();
     let phone_number = if args.len() >= 2 {
         args[1].clone()
     } else {

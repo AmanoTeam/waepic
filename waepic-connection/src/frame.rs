@@ -297,8 +297,11 @@ pub(crate) async fn process_incoming_frame(
         .map_err(|e| ConnectionError::Protocol(format!("node parse failed: {e}")))?;
     let node = owned.to_owned_node();
 
-    let child_tags: Vec<&str> = match node.children() {
-        Some(children) => children.iter().map(|c| c.tag.as_ref()).collect(),
+    let child_tags = match node.children() {
+        Some(children) => children
+            .iter()
+            .map(|c| c.tag.as_ref())
+            .collect::<Vec<&str>>(),
         None => vec![],
     };
     tracing::trace!(

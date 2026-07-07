@@ -5,10 +5,10 @@
 
 use std::{sync::Arc, time::Duration};
 
+use buffa::message::Message as _;
 use chrono::Utc;
 use futures_timer::Delay;
 use futures_util::future::{Either, select};
-use buffa::message::Message as _;
 use rand::{SeedableRng, rngs::StdRng};
 use wacore::{
     companion_reg::companion_web_client_type_for_props,
@@ -158,10 +158,10 @@ async fn run_qr_pairing(
         adv_secret_key: device.adv_secret_key,
     };
 
-    let codes: Vec<String> = refs
+    let codes = refs
         .iter()
         .map(|r| PairUtils::make_qr_data(&device_state, r, client_type))
-        .collect();
+        .collect::<Vec<String>>();
 
     for (i, code) in codes.iter().enumerate() {
         if is_already_paired(&session).await {
@@ -251,9 +251,7 @@ fn is_pair_device_node(node: &Node) -> bool {
     if node.tag != "iq" {
         return false;
     }
-    node.attrs
-        .get("type")
-        .is_some_and(|v| v.as_str() == "set")
+    node.attrs.get("type").is_some_and(|v| v.as_str() == "set")
         && node
             .children()
             .is_some_and(|children| children.iter().any(|c| c.tag == "pair-device"))
@@ -263,7 +261,7 @@ fn is_pair_device_node(node: &Node) -> bool {
 fn extract_pair_device_refs(node: &Node) -> Option<Vec<String>> {
     let children = node.children()?;
     let pair_device = children.iter().find(|c| c.tag == "pair-device")?;
-    let refs: Vec<String> = pair_device
+    let refs = pair_device
         .children()
         .map(|chs| {
             chs.iter()
@@ -274,7 +272,7 @@ fn extract_pair_device_refs(node: &Node) -> Option<Vec<String>> {
                 })
                 .filter_map(|b| std::str::from_utf8(b).ok())
                 .map(ToString::to_string)
-                .collect()
+                .collect::<Vec<String>>()
         })
         .unwrap_or_default();
     if refs.is_empty() { None } else { Some(refs) }
@@ -289,9 +287,7 @@ pub(crate) fn is_pair_success_node(node: &Node) -> bool {
         return false;
     }
 
-    node.attrs
-        .get("type")
-        .is_some_and(|v| v.as_str() == "set")
+    node.attrs.get("type").is_some_and(|v| v.as_str() == "set")
         && node
             .children()
             .is_some_and(|children| children.iter().any(|c| c.tag == "pair-success"))
@@ -470,12 +466,12 @@ pub(crate) async fn upload_prekeys_if_needed(
         StdRng::from_rng(&mut thread_rng)
     };
     let start_id = device.next_pre_key_id;
-    let pre_keys: Vec<(u32, KeyPair)> = (0..needed as u32)
+    let pre_keys = (0..needed as u32)
         .map(|i| {
             let kp = KeyPair::generate(&mut rng);
             (start_id + i, kp)
         })
-        .collect();
+        .collect::<Vec<(u32, KeyPair)>>();
 
     let upload_spec = PreKeyUploadSpec::new(
         device.registration_id,
@@ -497,6 +493,7 @@ pub(crate) async fn upload_prekeys_if_needed(
     for (id, kp) in &pre_keys {
         let structure = wacore_record::new_pre_key_record(*id, kp);
         let encoded = structure.encode_to_vec();
+
         if let Err(e) = session.store_prekey(*id, &encoded, true).await {
             tracing::warn!("failed to store prekey {id}: {e}");
         }
