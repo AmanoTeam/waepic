@@ -35,8 +35,10 @@ use crate::{
     client::{Client, signal_adapter::SignalProtocolStoreAdapter},
     message::Message,
     update::{
-        ChatPresence, ChatPresenceState, ContactUpdate, GroupUpdate, HistorySyncChunk, Presence,
-        Receipt, ReceiptType, SyncedConversation, Update,
+        ChatPresence, ChatPresenceState, ConnectFailure, ConnectFailureReason, ContactUpdate,
+        DisappearingModeChanged, GroupUpdate, HistorySyncChunk, PictureUpdate, Presence,
+        PushNameUpdate, Receipt, ReceiptType, StreamError, SyncedConversation, TemporaryBan,
+        Update,
     },
 };
 
@@ -465,6 +467,9 @@ pub(crate) async fn handle_notification(node: &Node, client: &Client) -> Result<
     match notif_type.as_str() {
         "contacts" => Ok(handle_contacts_notification(node, client)),
         "w:gp2" => Ok(handle_group_notification(node, client)),
+        "picture" => Ok(handle_picture_notification(node, client)),
+        "w:push" | "push_name" => Ok(handle_push_name_notification(node, client)),
+        "disappearing_mode" => Ok(handle_disappearing_mode_notification(node, client)),
         _ => Ok(None),
     }
 }
@@ -485,7 +490,8 @@ async fn handle_pair_code_notification(client: &Client, node: &Node) -> Result<b
         .and_then(|n| match n.content.as_deref() {
             Some(NodeContentRef::Bytes(b)) if b.len() == 80 => Some(b.to_vec()),
             _ => None,
-        }) else {
+        })
+    else {
         tracing::warn!("missing or invalid primary wrapped ephemeral pub in notification");
         return Ok(false);
     };
@@ -496,7 +502,8 @@ async fn handle_pair_code_notification(client: &Client, node: &Node) -> Result<b
                 <[u8; 32]>::try_from(b.as_ref()).ok()
             }
             _ => None,
-        }) else {
+        })
+    else {
         tracing::warn!("missing or invalid primary identity pub in notification");
         return Ok(false);
     };
@@ -511,7 +518,8 @@ async fn handle_pair_code_notification(client: &Client, node: &Node) -> Result<b
         pair_code,
         ephemeral_keypair,
         ..
-    } = state else {
+    } = state
+    else {
         tracing::warn!("received pair code notification but not in waiting state");
         return Ok(false);
     };
@@ -614,7 +622,7 @@ fn handle_group_notification(node: &Node, _client: &Client) -> Option<Update> {
     };
     let name = node
         .get_optional_child("subject")
-        .and_then(wacore_binary::Node::content_as_string)
+        .and_then(Node::content_as_string)
         .map(|s| s.to_string());
 
     // Collect participants from <add> or <remove> children
@@ -625,7 +633,11 @@ fn handle_group_notification(node: &Node, _client: &Client) -> Option<Update> {
                 && let Some(child_children) = child.children()
             {
                 for participant_node in child_children.iter().filter(|c| c.tag == "participant") {
-                    if let Some(jid) = participant_node.attrs.get("jid").and_then(NodeValue::to_jid) {
+                    if let Some(jid) = participant_node
+                        .attrs
+                        .get("jid")
+                        .and_then(NodeValue::to_jid)
+                    {
                         participants.push(jid);
                     }
                 }
@@ -637,6 +649,88 @@ fn handle_group_notification(node: &Node, _client: &Client) -> Option<Update> {
         jid: group_jid,
         name,
         participants,
+    }))
+}
+
+/// Handle `<notification type="picture">` - contact profile picture changes.
+fn handle_picture_notification(node: &Node, _client: &Client) -> Option<Update> {
+    let Some(from_jid) = node.attrs.get("from").and_then(NodeValue::to_jid) else {
+        tracing::warn!("picture node missing valid 'from' attribute, skipping");
+        return None;
+    };
+    let timestamp = node
+        .attrs
+        .get("t")
+        .and_then(|v| v.as_str().parse::<u64>().ok())
+        .unwrap_or(0);
+
+    if node.get_optional_child("remove").is_some() {
+        return Some(Update::PictureUpdate(PictureUpdate {
+            jid: from_jid,
+            author: None,
+            timestamp,
+            removed: true,
+            picture_id: None,
+        }));
+    }
+
+    let picture_id = node
+        .get_optional_child("set")
+        .or_else(|| node.get_optional_child("picture"))
+        .and_then(|n| n.attrs.get("id").map(|v| v.as_str().to_string()));
+
+    Some(Update::PictureUpdate(PictureUpdate {
+        jid: from_jid,
+        author: None,
+        timestamp,
+        removed: false,
+        picture_id,
+    }))
+}
+
+/// Handle `<notification type="w:push">` or `push_name` - contact push name changes.
+fn handle_push_name_notification(node: &Node, _client: &Client) -> Option<Update> {
+    let Some(from_jid) = node.attrs.get("from").and_then(NodeValue::to_jid) else {
+        tracing::warn!("push node missing valid 'from' attribute, skipping");
+        return None;
+    };
+
+    let push_name = node
+        .get_optional_child("push")
+        .and_then(Node::content_as_string)
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    Some(Update::PushNameUpdate(PushNameUpdate {
+        jid: from_jid,
+        old_push_name: String::new(),
+        new_push_name: push_name,
+    }))
+}
+
+/// Handle `<notification type="disappearing_mode">` - disappearing messages setting changed.
+fn handle_disappearing_mode_notification(node: &Node, _client: &Client) -> Option<Update> {
+    let Some(from_jid) = node.attrs.get("from").and_then(NodeValue::to_jid) else {
+        tracing::warn!("dissapearing mode node missing valid 'from' attribute, skipping");
+        return None;
+    };
+
+    let duration = node
+        .attrs
+        .get("duration")
+        .and_then(|v| v.as_str().parse::<u32>().ok())
+        .unwrap_or(0);
+
+    let setting_timestamp = node
+        .attrs
+        .get("t")
+        .and_then(|v| v.as_str().parse::<u64>().ok())
+        .unwrap_or(0);
+
+    Some(Update::DisappearingModeChanged(DisappearingModeChanged {
+        from: from_jid,
+        duration,
+        setting_timestamp,
     }))
 }
 
@@ -811,11 +905,61 @@ pub(crate) fn handle_success(_node: &Node) -> Update {
 }
 
 /// Process an incoming `<failure>` or `<stream:error>` node and produce
-/// an [`Update::LoggedOut`].
+/// the appropriate [`Update`] variant.
 ///
-/// These nodes indicate the session has been invalidated server-side.
+/// The node is inspected for:
+/// - `<stream:error><conflict/>` -> [`Update::StreamReplaced`]
+/// - Numeric error codes on `<failure>` or `<stream:error>` ->
+///   [`Update::ConnectFailure`], [`Update::TemporaryBan`], or
+///   [`Update::ClientOutdated`]
+/// - `<stream:error>` without numeric code -> [`Update::StreamError`]
+/// - Bare `<failure>` without code -> [`Update::LoggedOut`]
 #[allow(dead_code)]
-pub(crate) fn handle_failure(_node: &Node) -> Update {
+pub(crate) fn handle_failure(node: &Node) -> Update {
+    // <stream:error><conflict/> means another device took over the connection.
+    if node.tag == "stream:error" && node.get_optional_child("conflict").is_some() {
+        return Update::StreamReplaced;
+    }
+
+    // Parse error code from the node (present on <failure> and some <stream:error>).
+    if let Some(code_val) = node.attrs.get("code")
+        && let Ok(code) = code_val.as_str().parse::<i32>()
+    {
+        // 402 = temporary ban
+        if code == 402 {
+            let expire = node
+                .attrs
+                .get("expire")
+                .and_then(|v| v.as_str().parse::<u64>().ok())
+                .unwrap_or(0);
+            return Update::TemporaryBan(TemporaryBan { code, expire });
+        }
+
+        // 405 = client outdated
+        if code == 405 {
+            return Update::ClientOutdated;
+        }
+
+        let reason = ConnectFailureReason::from_i32(code);
+        let message = node
+            .get_optional_child("text")
+            .and_then(wacore_binary::Node::content_as_string)
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        return Update::ConnectFailure(ConnectFailure { reason, message });
+    }
+
+    // <stream:error> without a numeric code -> StreamError
+    if node.tag == "stream:error" {
+        let code = node
+            .attrs
+            .get("code")
+            .map(|v| v.as_str().to_string())
+            .unwrap_or_default();
+        return Update::StreamError(StreamError { code });
+    }
+
+    // Bare <failure> without code -> LoggedOut
     Update::LoggedOut
 }
 
@@ -1104,8 +1248,20 @@ fn handle_edge_routing_child(child: &Node, client: &Client) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wacore_binary::Jid;
-    use wacore_binary::builder::NodeBuilder;
+    use std::sync::Arc;
+    use wacore_binary::{Jid, builder::NodeBuilder};
+
+    fn make_test_client() -> Client {
+        use crate::ClientConfiguration;
+        use waepic_connection::Connection;
+        use waepic_session::MemorySession;
+
+        let session = Arc::new(MemorySession::new());
+        let config = ClientConfiguration::default();
+        let (_runner, _event_tx, handle) =
+            Connection::new(session.clone(), config.connection.clone());
+        Client::new(handle, session, config)
+    }
 
     #[test]
     fn success_node_produces_pair_success() {
@@ -1132,7 +1288,7 @@ mod tests {
     }
 
     #[test]
-    fn stream_error_node_produces_logged_out() {
+    fn stream_error_with_conflict_produces_stream_replaced() {
         let node = NodeBuilder::new("stream:error")
             .children([NodeBuilder::new("conflict").build()])
             .build();
@@ -1140,9 +1296,110 @@ mod tests {
         let update = handle_failure(&node);
 
         assert!(
-            matches!(update, Update::LoggedOut),
-            "expected LoggedOut, got {update:?}"
+            matches!(update, Update::StreamReplaced),
+            "expected StreamReplaced, got {update:?}"
         );
+    }
+
+    #[test]
+    fn stream_error_with_code_produces_connect_failure() {
+        let node = NodeBuilder::new("stream:error").attr("code", "400").build();
+
+        let update = handle_failure(&node);
+
+        assert!(
+            matches!(update, Update::ConnectFailure(_)),
+            "expected ConnectFailure, got {update:?}"
+        );
+    }
+
+    #[test]
+    fn failure_with_temp_ban_code_produces_temporary_ban() {
+        let node = NodeBuilder::new("failure")
+            .attr("code", "402")
+            .attr("expire", "86400")
+            .build();
+
+        let update = handle_failure(&node);
+
+        assert!(
+            matches!(
+                update,
+                Update::TemporaryBan(crate::update::TemporaryBan {
+                    code: 402,
+                    expire: 86400
+                })
+            ),
+            "expected TemporaryBan, got {update:?}"
+        );
+    }
+
+    #[test]
+    fn failure_with_client_outdated_code() {
+        let node = NodeBuilder::new("failure").attr("code", "405").build();
+
+        let update = handle_failure(&node);
+
+        assert!(
+            matches!(update, Update::ClientOutdated),
+            "expected ClientOutdated, got {update:?}"
+        );
+    }
+
+    #[test]
+    fn bare_stream_error_produces_stream_error() {
+        let node = NodeBuilder::new("stream:error").build();
+
+        let update = handle_failure(&node);
+
+        assert!(
+            matches!(update, Update::StreamError(StreamError { ref code }) if code.is_empty()),
+            "expected StreamError with empty code, got {update:?}"
+        );
+    }
+
+    #[test]
+    fn picture_notification_remove_produces_picture_update() {
+        let node = NodeBuilder::new("notification")
+            .attr("type", "picture")
+            .attr("from", "12345@s.whatsapp.net")
+            .attr("t", "1700000000")
+            .children([NodeBuilder::new("remove").build()])
+            .build();
+
+        let client = make_test_client();
+        let update = handle_picture_notification(&node, &client);
+
+        assert!(update.is_some(), "expected Some(PictureUpdate)");
+        match update.unwrap() {
+            Update::PictureUpdate(p) => {
+                assert!(p.removed, "expected removed=true");
+                assert!(p.picture_id.is_none());
+            }
+            other => panic!("expected PictureUpdate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn picture_notification_set_produces_picture_update_with_id() {
+        let node = NodeBuilder::new("notification")
+            .attr("type", "picture")
+            .attr("from", "12345@s.whatsapp.net")
+            .attr("t", "1700000000")
+            .children([NodeBuilder::new("set").attr("id", "pic123").build()])
+            .build();
+
+        let client = make_test_client();
+        let update = handle_picture_notification(&node, &client);
+
+        assert!(update.is_some());
+        match update.unwrap() {
+            Update::PictureUpdate(p) => {
+                assert!(!p.removed);
+                assert_eq!(p.picture_id.as_deref(), Some("pic123"));
+            }
+            other => panic!("expected PictureUpdate, got {other:?}"),
+        }
     }
 
     /// Build a notification node with type="history_sync_notification"
