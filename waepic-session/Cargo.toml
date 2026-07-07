@@ -16,3 +16,8 @@ thiserror.workspace = true
 
 [dev-dependencies]
 compio = { workspace = true, features = ["macros"] }
+
+[features]
+default = ["simd"]
+
+simd = ["wacore/simd"]

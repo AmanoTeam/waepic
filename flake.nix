@@ -23,7 +23,7 @@
         };
 
         # Rust
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+        rustToolchain = pkgs.rust-bin.nightly."2026-06-30".default.override {
           extensions = [
             "clippy"
             "rustfmt"

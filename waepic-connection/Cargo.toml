@@ -39,7 +39,9 @@ compio.workspace = true
 tracing-subscriber.workspace = true
 
 [features]
-default = ["rustls", "smol"]
+default = ["rustls", "simd", "smol"]
+
+simd = ["wacore/simd"]
 
 smol = ["async-tungstenite/smol-runtime"]
 tokio = ["async-tungstenite/tokio-runtime", "dep:tokio"]
