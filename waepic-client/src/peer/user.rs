@@ -50,7 +50,7 @@ impl User {
     }
 
     /// Send a message to this user.
-    pub async fn send_message(&self, msg: impl Into<InputMessage>) -> Result<Message> {
+    pub async fn send_message<M: Into<InputMessage>>(&self, msg: M) -> Result<Message> {
         self.client.send_message(self.clone(), msg.into()).await
     }
 

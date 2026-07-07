@@ -219,9 +219,9 @@ impl Client {
     /// the Signal protocol using wacore's `prepare_dm_stanza` and
     /// `prepare_group_stanza`.
     #[tracing::instrument(skip(self, chat))]
-    pub async fn send_message(
+    pub async fn send_message<C: Into<Chat>>(
         &self,
-        chat: impl Into<Chat>,
+        chat: C,
         message: InputMessage,
     ) -> Result<Message> {
         let chat = chat.into();
@@ -237,7 +237,7 @@ impl Client {
             let now = Utc::now();
             let info = MessageInfo {
                 id: msg_id.clone(),
-                source: wacore::types::message::MessageSource {
+                source: MessageSource {
                     chat: jid.clone(),
                     sender: jid,
                     is_from_me: true,
@@ -341,9 +341,9 @@ impl Client {
 
     /// Send a reaction to a message.
     #[tracing::instrument(skip(self, chat))]
-    pub async fn send_reaction(
+    pub async fn send_reaction<C: Into<Chat>>(
         &self,
-        chat: impl Into<Chat>,
+        chat: C,
         message_id: &str,
         emoji: &str,
     ) -> Result<()> {
@@ -360,7 +360,7 @@ impl Client {
 
     /// Mark messages as read in a chat.
     #[tracing::instrument(skip(self, chat))]
-    pub async fn mark_as_read(&self, chat: impl Into<Chat>, message_ids: &[&str]) -> Result<()> {
+    pub async fn mark_as_read<C: Into<Chat>>(&self, chat: C, message_ids: &[&str]) -> Result<()> {
         let chat = chat.into();
         if message_ids.is_empty() {
             return Ok(());
@@ -379,9 +379,9 @@ impl Client {
     /// Sends a protocol message of type `MessageEdit` referencing the original
     /// message and carrying the replacement text content.
     #[tracing::instrument(skip(self, chat))]
-    pub async fn edit_message(
+    pub async fn edit_message<C: Into<Chat>>(
         &self,
-        chat: impl Into<Chat>,
+        chat: C,
         message_id: &str,
         new_text: InputMessage,
     ) -> Result<()> {
@@ -403,7 +403,11 @@ impl Client {
     ///
     /// Sends a revoke protocol message for each message ID in the list.
     #[tracing::instrument(skip(self, chat))]
-    pub async fn delete_messages(&self, chat: impl Into<Chat>, message_ids: &[&str]) -> Result<()> {
+    pub async fn delete_messages<C: Into<Chat>>(
+        &self,
+        chat: C,
+        message_ids: &[&str],
+    ) -> Result<()> {
         let chat = chat.into();
         for msg_id in message_ids {
             self.revoke_message(chat.clone(), msg_id, RevokeType::Sender)
@@ -418,9 +422,9 @@ impl Client {
     /// `revoke_type` determines whether this is a sender-initiated or admin-initiated
     /// deletion.
     #[tracing::instrument(skip(self, chat))]
-    pub async fn revoke_message(
+    pub async fn revoke_message<C: Into<Chat>>(
         &self,
-        chat: impl Into<Chat>,
+        chat: C,
         message_id: &str,
         revoke_type: RevokeType,
     ) -> Result<()> {
@@ -447,11 +451,11 @@ impl Client {
     /// with forwarding context info referencing each original message.
     /// Full content forwarding requires message storage (v0.2).
     #[tracing::instrument(skip(self, dest, source))]
-    pub async fn forward_messages(
+    pub async fn forward_messages<D: Into<Chat>, S: Into<Chat>>(
         &self,
-        dest: impl Into<Chat>,
+        dest: D,
         message_ids: &[&str],
-        source: impl Into<Chat>,
+        source: S,
     ) -> Result<()> {
         let dest = dest.into();
         let source = source.into();

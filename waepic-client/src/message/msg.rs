@@ -90,14 +90,14 @@ impl Message {
     }
 
     /// Send a new message to the same chat without replying to this message.
-    pub async fn respond(&self, msg: impl Into<InputMessage>) -> Result<Message> {
+    pub async fn respond<M: Into<InputMessage>>(&self, msg: M) -> Result<Message> {
         self.client
             .send_message(self.chat.clone(), msg.into())
             .await
     }
 
     /// Send a reply to this message.
-    pub async fn reply(&self, msg: impl Into<InputMessage>) -> Result<Message> {
+    pub async fn reply<M: Into<InputMessage>>(&self, msg: M) -> Result<Message> {
         let reply_msg = msg.into();
         let reply_msg = reply_msg.reply_to(Some(self.id().to_owned()));
 
@@ -105,7 +105,7 @@ impl Message {
     }
 
     /// Edit this message's text.
-    pub async fn edit(&self, new_text: impl Into<InputMessage>) -> Result<()> {
+    pub async fn edit<M: Into<InputMessage>>(&self, new_text: M) -> Result<()> {
         self.client
             .edit_message(self.chat.clone(), self.id(), new_text.into())
             .await
