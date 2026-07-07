@@ -24,7 +24,7 @@ impl User {
     }
 
     /// The JID of this user.
-    pub fn id(&self) -> &Jid {
+    pub fn jid(&self) -> &Jid {
         &self.jid
     }
 

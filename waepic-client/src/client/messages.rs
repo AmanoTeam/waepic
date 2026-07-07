@@ -225,7 +225,7 @@ impl Client {
         message: InputMessage,
     ) -> Result<Message> {
         let chat = chat.into();
-        let jid = chat.id().clone();
+        let jid = chat.jid().clone();
         let msg_id = generate_message_id();
         let proto = input_to_proto(&message);
 
@@ -348,7 +348,7 @@ impl Client {
         emoji: &str,
     ) -> Result<()> {
         let chat = chat.into();
-        let jid = chat.id().clone();
+        let jid = chat.jid().clone();
         let msg_id = generate_message_id();
         let proto = build_reaction_proto(&jid, message_id, emoji);
         let node = build_reaction_node(&jid, &msg_id, &proto);
@@ -366,7 +366,7 @@ impl Client {
             return Ok(());
         }
 
-        let jid = chat.id().clone();
+        let jid = chat.jid().clone();
         let node = build_read_receipt_node(&jid, message_ids);
 
         self.inner.handle.send_node(node).await?;
@@ -386,7 +386,7 @@ impl Client {
         new_text: InputMessage,
     ) -> Result<()> {
         let chat = chat.into();
-        let jid = chat.id().clone();
+        let jid = chat.jid().clone();
         let new_msg_id = generate_message_id();
         let new_content = input_to_proto(&new_text);
         let timestamp_ms = Utc::now().timestamp_millis();
@@ -429,7 +429,7 @@ impl Client {
         revoke_type: RevokeType,
     ) -> Result<()> {
         let chat = chat.into();
-        let jid = chat.id().clone();
+        let jid = chat.jid().clone();
         let new_msg_id = generate_message_id();
 
         let participant = match &revoke_type {
@@ -459,8 +459,8 @@ impl Client {
     ) -> Result<()> {
         let dest = dest.into();
         let source = source.into();
-        let dest_jid = dest.id().clone();
-        let source_jid = source.id().clone();
+        let dest_jid = dest.jid().clone();
+        let source_jid = source.jid().clone();
 
         for msg_id in message_ids {
             let new_id = generate_message_id();

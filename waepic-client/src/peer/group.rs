@@ -20,7 +20,7 @@ impl Group {
     }
 
     /// The JID of this group.
-    pub fn id(&self) -> &Jid {
+    pub fn jid(&self) -> &Jid {
         &self.jid
     }
 

@@ -231,7 +231,7 @@ async fn test_receive_message() {
 
     let chat = client.chat(from);
     assert!(chat.is_user());
-    assert_eq!(chat.id().to_string(), "12345@s.whatsapp.net");
+    assert_eq!(chat.jid().to_string(), "12345@s.whatsapp.net");
 
     let group_jid = Jid::group("123456789");
     let group_chat = client.chat(group_jid);

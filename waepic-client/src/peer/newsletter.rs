@@ -21,7 +21,7 @@ impl Newsletter {
     }
 
     /// The JID of this newsletter.
-    pub fn id(&self) -> &Jid {
+    pub fn jid(&self) -> &Jid {
         &self.jid
     }
 

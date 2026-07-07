@@ -38,12 +38,12 @@ pub enum Chat {
 
 impl Chat {
     /// The JID of this chat, regardless of variant.
-    pub fn id(&self) -> &Jid {
+    pub fn jid(&self) -> &Jid {
         match self {
-            Self::User(u) => u.id(),
-            Self::Group(g) => g.id(),
-            Self::Newsletter(n) => n.id(),
-            Self::Other(o) => o.id(),
+            Self::User(u) => u.jid(),
+            Self::Group(g) => g.jid(),
+            Self::Newsletter(n) => n.jid(),
+            Self::Other(o) => o.jid(),
         }
     }
 
@@ -78,7 +78,7 @@ impl fmt::Display for Chat {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.name() {
             Some(name) => f.write_str(name),
-            None => fmt::Display::fmt(self.id(), f),
+            None => fmt::Display::fmt(self.jid(), f),
         }
     }
 }

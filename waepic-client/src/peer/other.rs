@@ -16,7 +16,7 @@ impl OtherChat {
     }
 
     /// The JID of this chat.
-    pub fn id(&self) -> &Jid {
+    pub fn jid(&self) -> &Jid {
         &self.jid
     }
 }
