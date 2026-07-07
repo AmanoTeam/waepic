@@ -182,15 +182,14 @@ impl Client {
     #[tracing::instrument(skip(self))]
     pub async fn logout(&self) -> Result<()> {
         let device = self.inner.device.read().await;
-        if let Some(pn) = &device.pn {
-            if let Err(e) = self
+        if let Some(pn) = &device.pn
+            && let Err(e) = self
                 .inner
                 .handle
                 .send_iq(RemoveCompanionDeviceSpec::new(pn))
                 .await
-            {
-                tracing::warn!("failed to send logout IQ: {e}");
-            }
+        {
+            tracing::warn!("failed to send logout IQ: {e}");
         }
         drop(device);
 

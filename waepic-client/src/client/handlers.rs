@@ -1192,7 +1192,7 @@ fn handle_dirty_child(child: &Node, client: &Client) {
     let dirty_type = dirty_type_str.clone();
     let ts = bit.timestamp;
 
-    compio::runtime::spawn(async move {
+    async_global_executor::spawn(async move {
         // Acknowledge the dirty notification so the server knows we've seen it
         let clean_spec = match ts {
             Some(ts_val) => CleanDirtyBitsSpec::single(DirtyBit::with_timestamp(
@@ -1239,7 +1239,7 @@ fn handle_edge_routing_child(child: &Node, client: &Client) {
         let routing_bytes = routing_bytes.to_vec();
         let device = client.inner.device.clone();
 
-        compio::runtime::spawn(async move {
+        async_global_executor::spawn(async move {
             let mut device_guard = device.write().await;
             device_guard.edge_routing_info = Some(routing_bytes);
         })
