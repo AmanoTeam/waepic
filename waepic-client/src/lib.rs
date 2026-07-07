@@ -69,3 +69,10 @@ pub use update::Update;
 
 /// Convenient [`Result`] alias for client operations.
 pub type Result<T> = std::result::Result<T, ClientError>;
+
+/// Re-export of [`wacore`].
+pub use wacore;
+/// Re-export of [`wacore-binary`].
+pub use wacore_binary;
+/// Re-export of [`waproto`].
+pub use waproto;
