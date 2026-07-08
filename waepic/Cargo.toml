@@ -6,9 +6,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-waepic-client = { workspace = true, default-features = false }
-waepic-connection = { workspace = true, default-features = false }
-waepic-session = { workspace = true, default-features = false }
+waepic-client.workspace = true
+waepic-connection.workspace = true
+waepic-session.workspace = true
 
 [features]
 default = ["simd"]

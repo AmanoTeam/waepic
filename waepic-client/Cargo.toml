@@ -37,7 +37,7 @@ qr2term.workspace = true
 tracing-subscriber.workspace = true
 
 [features]
-default = ["simd"]
+default = []
 
 download = ["dep:reqwest"]
 simd = ["wacore/simd", "waepic-connection/simd", "waepic-session/simd"]

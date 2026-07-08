@@ -18,6 +18,6 @@ thiserror.workspace = true
 compio = { workspace = true, features = ["macros"] }
 
 [features]
-default = ["simd"]
+default = []
 
 simd = ["wacore/simd"]
