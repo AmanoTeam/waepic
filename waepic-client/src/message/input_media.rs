@@ -75,7 +75,7 @@ impl InputMedia {
     }
 
     #[must_use]
-    pub fn with_caption(mut self, caption: impl Into<String>) -> Self {
+    pub fn caption(mut self, caption: impl Into<String>) -> Self {
         match &mut self {
             Self::Image { caption: c, .. } | Self::Video { caption: c, .. } => {
                 *c = Some(caption.into());
@@ -86,7 +86,7 @@ impl InputMedia {
     }
 
     #[must_use]
-    pub fn with_mime_type(mut self, mime_type: impl Into<String>) -> Self {
+    pub fn mime_type(mut self, mime_type: impl Into<String>) -> Self {
         match &mut self {
             Self::Image { mime_type: m, .. }
             | Self::Video { mime_type: m, .. }
@@ -100,7 +100,7 @@ impl InputMedia {
     }
 
     #[must_use]
-    pub fn with_filename(mut self, filename: impl Into<String>) -> Self {
+    pub fn filename(mut self, filename: impl Into<String>) -> Self {
         if let Self::Document { filename: f, .. } = &mut self {
             *f = Some(filename.into());
         }
@@ -108,7 +108,7 @@ impl InputMedia {
     }
 
     #[must_use]
-    pub fn with_ptt(mut self, ptt: bool) -> Self {
+    pub fn ptt(mut self, ptt: bool) -> Self {
         if let Self::Audio { ptt: p, .. } = &mut self {
             *p = ptt;
         }
@@ -122,16 +122,6 @@ impl InputMedia {
             | Self::Audio { data, .. }
             | Self::Document { data, .. }
             | Self::Sticker { data, .. } => data,
-        }
-    }
-
-    pub fn mime_type(&self) -> Option<&str> {
-        match self {
-            Self::Image { mime_type, .. }
-            | Self::Video { mime_type, .. }
-            | Self::Audio { mime_type, .. }
-            | Self::Document { mime_type, .. }
-            | Self::Sticker { mime_type, .. } => mime_type.as_deref(),
         }
     }
 }

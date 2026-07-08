@@ -150,14 +150,13 @@ mod tests {
     #[test]
     fn input_media_defaults() {
         let img = InputMedia::image(vec![1, 2, 3]);
-        assert!(img.mime_type().is_none());
         assert_eq!(img.data().as_ref(), &[1, 2, 3]);
         assert_eq!(img.to_string(), "image");
     }
 
     #[test]
     fn input_media_with_caption() {
-        let vid = InputMedia::video(vec![0u8; 10]).with_caption("cool video");
+        let vid = InputMedia::video(vec![0u8; 10]).caption("cool video");
         match vid {
             InputMedia::Video { caption, .. } => {
                 assert_eq!(caption.as_deref(), Some("cool video"));
@@ -167,14 +166,8 @@ mod tests {
     }
 
     #[test]
-    fn input_media_with_mime() {
-        let doc = InputMedia::document(vec![0u8; 5]).with_mime_type("application/pdf");
-        assert_eq!(doc.mime_type(), Some("application/pdf"));
-    }
-
-    #[test]
     fn input_media_with_filename() {
-        let doc = InputMedia::document(vec![0u8; 5]).with_filename("readme.md");
+        let doc = InputMedia::document(vec![0u8; 5]).filename("readme.md");
         match doc {
             InputMedia::Document { filename, .. } => {
                 assert_eq!(filename.as_deref(), Some("readme.md"));
@@ -185,7 +178,7 @@ mod tests {
 
     #[test]
     fn input_media_ptt() {
-        let audio = InputMedia::audio(vec![0u8; 10]).with_ptt(true);
+        let audio = InputMedia::audio(vec![0u8; 10]).ptt(true);
         assert_eq!(audio.to_string(), "voice note");
         let audio2 = InputMedia::audio(vec![0u8; 10]);
         assert_eq!(audio2.to_string(), "audio");
