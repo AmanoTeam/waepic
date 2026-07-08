@@ -1,6 +1,6 @@
 use wacore_binary::Jid;
 
-use crate::{Client, InputMessage, Message, Result};
+use crate::{Client, ClientError, InputMessage, Message, Result};
 
 /// A private 1:1 conversation with a WhatsApp user.
 #[derive(Clone, Debug)]
@@ -57,5 +57,23 @@ impl User {
     /// Mark messages as read in this chat.
     pub async fn mark_as_read(&self, message_ids: &[&str]) -> Result<()> {
         self.client.mark_as_read(self.clone(), message_ids).await
+    }
+
+    /// Fetch the profile picture URL for this user.
+    ///
+    /// Returns `Ok(Some(url))` if a picture exists, `Ok(None)` if no picture
+    /// is set or the request indicates no picture is available.
+    pub async fn profile_picture_url(&self) -> Result<Option<String>> {
+        let spec = wacore::iq::contacts::ProfilePictureSpec::full(&self.jid);
+        let response = self
+            .client
+            .inner
+            .handle
+            .send_iq(spec)
+            .await
+            .map_err(|e| {
+                ClientError::Internal(format!("profile picture request failed: {e}"))
+            })?;
+        Ok(response.map(|p| p.url))
     }
 }
