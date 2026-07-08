@@ -85,8 +85,14 @@ impl Message {
 
     /// Unix timestamp (seconds) when the message was last edited, if ever.
     pub fn edit_date(&self) -> Option<u64> {
-        let _ = &self.raw.edited_message;
-        None
+        use waproto::whatsapp::message::protocol_message::Type;
+
+        let pm = self.raw.protocol_message.as_option()?;
+        if pm.r#type == Some(Type::MessageEdit) {
+            pm.timestamp_ms.map(|ts| ts as u64)
+        } else {
+            None
+        }
     }
 
     /// If this message is a reply to another message, return the target
