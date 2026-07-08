@@ -50,6 +50,16 @@ impl Message {
             .or_else(|| self.raw.extended_text_message.text.as_deref())
     }
 
+    /// The push name (display name) of the sender, if available.
+    pub fn push_name(&self) -> &str {
+        &self.info.push_name
+    }
+
+    /// The message type (e.g. `"text"`, `"image"`, `"video"`, `"audio"`).
+    pub fn kind(&self) -> &str {
+        &self.info.r#type
+    }
+
     /// Whether this message was sent by the current user.
     pub fn outgoing(&self) -> bool {
         self.info.source.is_from_me
