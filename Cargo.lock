@@ -3207,7 +3207,7 @@ dependencies = [
 
 [[package]]
 name = "waepic"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "waepic-client",
  "waepic-connection",
@@ -3216,7 +3216,7 @@ dependencies = [
 
 [[package]]
 name = "waepic-client"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-broadcast",
@@ -3247,7 +3247,7 @@ dependencies = [
 
 [[package]]
 name = "waepic-connection"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-broadcast",
@@ -3277,7 +3277,7 @@ dependencies = [
 
 [[package]]
 name = "waepic-session"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-lock",
  "async-trait",
