@@ -65,6 +65,12 @@ pub(crate) struct ClientInner {
     pub(crate) signal_cache: Arc<SignalStoreCache>,
     /// Pair-code authentication state machine.
     pub(crate) pair_code_state: Mutex<PairCodeState>,
+    /// HTTP client for media downloads (requires `download` feature).
+    #[cfg(feature = "download")]
+    pub(crate) http_client: reqwest::Client,
+    /// Cached media connection with TTL-aware expiry (requires `download` feature).
+    #[cfg(feature = "download")]
+    pub(crate) media_conn: RwLock<Option<crate::download::MediaConn>>,
 }
 
 impl Client {
@@ -83,6 +89,13 @@ impl Client {
                 device: Arc::new(RwLock::new(wacore::store::Device::new())),
                 signal_cache: Arc::new(SignalStoreCache::new()),
                 pair_code_state: Mutex::new(PairCodeState::Idle),
+                #[cfg(feature = "download")]
+                http_client: reqwest::Client::builder()
+                    .user_agent("waepic")
+                    .build()
+                    .expect("failed to build HTTP client"),
+                #[cfg(feature = "download")]
+                media_conn: RwLock::new(None),
             }),
         }
     }
@@ -105,6 +118,13 @@ impl Client {
                 device: Arc::new(RwLock::new(wacore::store::Device::new())),
                 signal_cache: Arc::new(SignalStoreCache::new()),
                 pair_code_state: Mutex::new(PairCodeState::Idle),
+                #[cfg(feature = "download")]
+                http_client: reqwest::Client::builder()
+                    .user_agent("waepic")
+                    .build()
+                    .expect("failed to build HTTP client"),
+                #[cfg(feature = "download")]
+                media_conn: RwLock::new(None),
             }),
         };
 

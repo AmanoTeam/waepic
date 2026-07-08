@@ -16,6 +16,7 @@ waproto.workspace = true
 anyhow.workspace = true
 async-broadcast.workspace = true
 async-channel.workspace = true
+async-fs.workspace = true
 async-global-executor.workspace = true
 async-lock.workspace = true
 async-trait.workspace = true
@@ -25,6 +26,7 @@ chrono.workspace = true
 futures-timer.workspace = true
 futures-util.workspace = true
 rand.workspace = true
+reqwest = { workspace = true, optional = true }
 thiserror.workspace = true
 tracing.workspace = true
 
@@ -35,6 +37,7 @@ qr2term.workspace = true
 tracing-subscriber.workspace = true
 
 [features]
-default = ["simd"]
+default = ["download", "simd"]
 
+download = ["dep:reqwest"]
 simd = ["wacore/simd", "waepic-connection/simd", "waepic-session/simd"]

@@ -49,6 +49,12 @@ pub mod peer;
 /// Event types emitted by the client: [`Update`] and supporting structs.
 pub mod update;
 
+/// Media download support: [`DownloadParams`], media connection caching, and decryption.
+///
+/// Requires the `download` feature to be enabled.
+#[cfg(feature = "download")]
+pub mod download;
+
 /// Re-export of the main client handle, update stream, and pairing types.
 pub use client::{
     Client, UpdateStream,
@@ -66,6 +72,9 @@ pub use message::{InputMedia, InputMessage, Message, MessageInfo};
 pub use peer::{Chat, Group, Jid, JidExt, Newsletter, OtherChat, Server, User};
 /// Re-export of the update event enum.
 pub use update::Update;
+/// Re-export of media download types.
+#[cfg(feature = "download")]
+pub use download::DownloadParams;
 
 /// Convenient [`Result`] alias for client operations.
 pub type Result<T> = std::result::Result<T, ClientError>;

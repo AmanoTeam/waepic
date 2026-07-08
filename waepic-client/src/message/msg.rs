@@ -141,4 +141,69 @@ impl Message {
     pub async fn mark_as_read(&self) -> Result<()> {
         self.client.mark_as_read(&self.chat, &[self.id()]).await
     }
+
+    /// Download and decrypt this message's media attachment.
+    ///
+    /// Returns the decrypted media bytes, or an error if the message has no
+    /// media or the download fails.
+    #[cfg(feature = "download")]
+    pub async fn download_media(&self) -> Result<Vec<u8>> {
+        use crate::{download::DownloadParams, error::ClientError};
+        use wacore::download::MediaType;
+
+        let msg = &self.raw;
+
+        // Try each media type in order of likelihood
+        let params = if let Some(img) = msg.image_message.as_option() {
+            Some(DownloadParams::encrypted(
+                img.direct_path.as_deref().unwrap_or_default(),
+                img.media_key.as_deref().unwrap_or_default(),
+                img.file_sha256.as_deref().unwrap_or_default(),
+                img.file_enc_sha256.as_deref().unwrap_or_default(),
+                img.file_length.unwrap_or(0),
+                MediaType::Image,
+            ))
+        } else if let Some(vid) = msg.video_message.as_option() {
+            Some(DownloadParams::encrypted(
+                vid.direct_path.as_deref().unwrap_or_default(),
+                vid.media_key.as_deref().unwrap_or_default(),
+                vid.file_sha256.as_deref().unwrap_or_default(),
+                vid.file_enc_sha256.as_deref().unwrap_or_default(),
+                vid.file_length.unwrap_or(0),
+                MediaType::Video,
+            ))
+        } else if let Some(aud) = msg.audio_message.as_option() {
+            Some(DownloadParams::encrypted(
+                aud.direct_path.as_deref().unwrap_or_default(),
+                aud.media_key.as_deref().unwrap_or_default(),
+                aud.file_sha256.as_deref().unwrap_or_default(),
+                aud.file_enc_sha256.as_deref().unwrap_or_default(),
+                aud.file_length.unwrap_or(0),
+                MediaType::Audio,
+            ))
+        } else if let Some(doc) = msg.document_message.as_option() {
+            Some(DownloadParams::encrypted(
+                doc.direct_path.as_deref().unwrap_or_default(),
+                doc.media_key.as_deref().unwrap_or_default(),
+                doc.file_sha256.as_deref().unwrap_or_default(),
+                doc.file_enc_sha256.as_deref().unwrap_or_default(),
+                doc.file_length.unwrap_or(0),
+                MediaType::Document,
+            ))
+        } else {
+            msg.sticker_message.as_option().map(|stk| {
+                DownloadParams::encrypted(
+                    stk.direct_path.as_deref().unwrap_or_default(),
+                    stk.media_key.as_deref().unwrap_or_default(),
+                    stk.file_sha256.as_deref().unwrap_or_default(),
+                    stk.file_enc_sha256.as_deref().unwrap_or_default(),
+                    stk.file_length.unwrap_or(0),
+                    MediaType::Sticker,
+                )
+            })
+        };
+
+        let params = params.ok_or_else(|| ClientError::Internal("message has no media".into()))?;
+        self.client.download(&params).await
+    }
 }
