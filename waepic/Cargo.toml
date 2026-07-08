@@ -6,6 +6,19 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-waepic-client = { workspace = true }
-waepic-connection = { workspace = true }
-waepic-session = { workspace = true }
+waepic-client = { workspace = true, default-features = false }
+waepic-connection = { workspace = true, default-features = false }
+waepic-session = { workspace = true, default-features = false }
+
+[features]
+default = ["simd"]
+
+simd = ["waepic-client/simd", "waepic-connection/simd", "waepic-session/simd"]
+
+# Async runtime
+smol = ["waepic-client/smol", "waepic-connection/smol"]
+tokio = ["waepic-client/tokio", "waepic-connection/tokio"]
+
+# TLS implementation
+native-tls = ["waepic-client/native-tls", "waepic-connection/native-tls"]
+rustls = ["waepic-client/rustls", "waepic-connection/rustls"]

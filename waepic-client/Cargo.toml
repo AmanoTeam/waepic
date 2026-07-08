@@ -37,7 +37,15 @@ qr2term.workspace = true
 tracing-subscriber.workspace = true
 
 [features]
-default = ["download", "simd"]
+default = ["simd"]
 
 download = ["dep:reqwest"]
 simd = ["wacore/simd", "waepic-connection/simd", "waepic-session/simd"]
+
+# Async runtime
+smol = ["waepic-connection/smol"]
+tokio = ["waepic-connection/tokio"]
+
+# TLS implementation
+native-tls = ["reqwest/native-tls", "waepic-connection/native-tls"]
+rustls = ["reqwest/rustls", "waepic-connection/rustls"]

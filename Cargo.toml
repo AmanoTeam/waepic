@@ -51,9 +51,9 @@ prost = "0.14"
 qr2term = "0.3"
 rand = "0.10"
 reqwest = {
-  version = "0.12",
+  version = "0.13",
   default-features = false,
-  features = ["rustls-tls", "stream"]
+  features = ["http2", "stream"]
 }
 rustls = "0.23"
 thiserror = "2.0"
