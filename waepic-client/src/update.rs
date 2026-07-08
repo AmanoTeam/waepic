@@ -4,6 +4,8 @@
 //! Supporting structs (`Receipt`, `Presence`, `ChatPresence`, etc.)
 //! carry the event payload.
 
+use wacore::types::presence::ReceiptType;
+
 use crate::{
     message::Message,
     peer::{Chat, Jid},
@@ -172,15 +174,6 @@ pub struct Receipt {
     pub receipt_type: ReceiptType,
     /// Unix timestamp (seconds) of the receipt.
     pub timestamp: u64,
-}
-
-/// Simplified receipt type for v0.1.
-#[derive(Clone, Debug)]
-pub enum ReceiptType {
-    /// The recipient has read the message(s).
-    Read,
-    /// The message(s) were delivered to the recipient's device.
-    Delivered,
 }
 
 /// A contact's online/offline presence.
@@ -550,7 +543,10 @@ impl ConnectFailureReason {
     }
 
     pub fn is_logged_out(&self) -> bool {
-        matches!(self, Self::LoggedOut | Self::AccountLocked | Self::UnknownLogout)
+        matches!(
+            self,
+            Self::LoggedOut | Self::AccountLocked | Self::UnknownLogout
+        )
     }
 }
 

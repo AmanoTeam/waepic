@@ -24,7 +24,10 @@ use wacore::{
     messages::{decode_plaintext, is_sender_key_distribution_only, unwrap_device_sent},
     pair_code::{PairCodeState, PairCodeUtils},
     request::InfoQuery,
-    types::message::{MessageInfo, MessageSource},
+    types::{
+        message::{MessageInfo, MessageSource},
+        presence::ReceiptType,
+    },
 };
 use wacore_binary::{
     Jid, Node, NodeContentRef, NodeRef, NodeValue, SERVER_JID, builder::NodeBuilder,
@@ -39,8 +42,7 @@ use crate::{
     update::{
         ChatPresence, ChatPresenceState, ConnectFailure, ConnectFailureReason, ContactUpdate,
         DisappearingModeChanged, GroupUpdate, HistorySyncChunk, PictureUpdate, Presence,
-        PushNameUpdate, Receipt, ReceiptType, StreamError, SyncedConversation, TemporaryBan,
-        Update,
+        PushNameUpdate, Receipt, StreamError, SyncedConversation, TemporaryBan, Update,
     },
 };
 
@@ -337,7 +339,7 @@ pub(crate) fn handle_receipt(node: &Node, client: &Client) -> Option<Update> {
         return None;
     };
     let receipt_type = match node.attrs.get("type").map(|v| v.as_str()) {
-        Some(s) if s.as_ref() == "read" => ReceiptType::Read,
+        Some(s) => ReceiptType::parse(s.as_ref()),
         _ => ReceiptType::Delivered,
     };
 
