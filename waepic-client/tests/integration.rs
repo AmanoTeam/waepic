@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use buffa::message::Message as _;
+use chrono::Utc;
 use wacore_binary::{
     Jid, Node, SERVER_JID,
     builder::NodeBuilder,
@@ -143,7 +144,7 @@ async fn test_send_text_message() {
     let chat = client.chat(Jid::pn("12345"));
 
     let result = client
-        .send_message(chat.clone(), InputMessage::text("hello world"))
+        .send_message(chat, InputMessage::text("hello world"))
         .await;
 
     assert!(
@@ -266,13 +267,11 @@ async fn test_edit_delete() {
     let chat = client.chat(Jid::pn("12345"));
 
     let edit_result = client
-        .edit_message(chat.clone(), "ORIGINAL_ID", InputMessage::text("edited"))
+        .edit_message(&chat, "ORIGINAL_ID", InputMessage::text("edited"))
         .await;
     assert!(edit_result.is_err(), "edit without connection should fail");
 
-    let delete_result = client
-        .delete_messages(chat.clone(), &["MSG_TO_DELETE"])
-        .await;
+    let delete_result = client.delete_messages(chat, &["MSG_TO_DELETE"]).await;
     assert!(
         delete_result.is_err(),
         "delete without connection should fail"
@@ -282,7 +281,7 @@ async fn test_edit_delete() {
         conversation: Some("edited text".to_string()),
         ..Default::default()
     };
-    let timestamp_ms = chrono::Utc::now().timestamp_millis();
+    let timestamp_ms = Utc::now().timestamp_millis();
 
     let edit_proto = wa::Message {
         protocol_message: wa::message::ProtocolMessage {
@@ -361,21 +360,19 @@ async fn test_reaction_read_receipt() {
     let client = make_test_client();
     let chat = client.chat(Jid::pn("12345"));
 
-    let reaction_result = client
-        .send_reaction(chat.clone(), "TARGET_MSG", ":heart:")
-        .await;
+    let reaction_result = client.send_reaction(&chat, "TARGET_MSG", ":heart:").await;
     assert!(
         reaction_result.is_err(),
         "reaction without connection should fail"
     );
 
-    let read_result = client.mark_as_read(chat.clone(), &["MSG_ID_001"]).await;
+    let read_result = client.mark_as_read(chat, &["MSG_ID_001"]).await;
     assert!(
         read_result.is_err(),
         "mark_as_read without connection should fail"
     );
 
-    let timestamp_ms = chrono::Utc::now().timestamp_millis();
+    let timestamp_ms = Utc::now().timestamp_millis();
     let reaction_proto = wa::Message {
         reaction_message: wa::message::ReactionMessage {
             key: wa::MessageKey {

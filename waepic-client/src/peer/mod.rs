@@ -83,9 +83,21 @@ impl fmt::Display for Chat {
     }
 }
 
+impl From<&Chat> for Chat {
+    fn from(chat: &Chat) -> Self {
+        chat.clone()
+    }
+}
+
 impl From<User> for Chat {
     fn from(user: User) -> Self {
         Self::User(user)
+    }
+}
+
+impl From<&User> for Chat {
+    fn from(user: &User) -> Self {
+        Self::User(user.clone())
     }
 }
 
@@ -95,14 +107,32 @@ impl From<Group> for Chat {
     }
 }
 
+impl From<&Group> for Chat {
+    fn from(group: &Group) -> Self {
+        Self::Group(group.clone())
+    }
+}
+
 impl From<Newsletter> for Chat {
     fn from(newsletter: Newsletter) -> Self {
         Self::Newsletter(newsletter)
     }
 }
 
+impl From<&Newsletter> for Chat {
+    fn from(newsletter: &Newsletter) -> Self {
+        Self::Newsletter(newsletter.clone())
+    }
+}
+
 impl From<OtherChat> for Chat {
     fn from(other: OtherChat) -> Self {
         Self::Other(other)
+    }
+}
+
+impl From<&OtherChat> for Chat {
+    fn from(other: &OtherChat) -> Self {
+        Self::Other(other.clone())
     }
 }

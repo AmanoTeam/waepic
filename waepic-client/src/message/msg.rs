@@ -91,9 +91,7 @@ impl Message {
 
     /// Send a new message to the same chat without replying to this message.
     pub async fn respond<M: Into<InputMessage>>(&self, msg: M) -> Result<Message> {
-        self.client
-            .send_message(self.chat.clone(), msg.into())
-            .await
+        self.client.send_message(&self.chat, msg.into()).await
     }
 
     /// Send a reply to this message.
@@ -101,34 +99,30 @@ impl Message {
         let reply_msg = msg.into();
         let reply_msg = reply_msg.reply_to(Some(self.id().to_owned()));
 
-        self.client.send_message(self.chat.clone(), reply_msg).await
+        self.client.send_message(&self.chat, reply_msg).await
     }
 
     /// Edit this message's text.
     pub async fn edit<M: Into<InputMessage>>(&self, new_text: M) -> Result<()> {
         self.client
-            .edit_message(self.chat.clone(), self.id(), new_text.into())
+            .edit_message(&self.chat, self.id(), new_text.into())
             .await
     }
 
     /// Delete this message for everyone.
     pub async fn delete(&self) -> Result<()> {
-        self.client
-            .delete_messages(self.chat.clone(), &[self.id()])
-            .await
+        self.client.delete_messages(&self.chat, &[self.id()]).await
     }
 
     /// React to this message with an emoji.
     pub async fn react(&self, emoji: &str) -> Result<()> {
         self.client
-            .send_reaction(self.chat.clone(), self.id(), emoji)
+            .send_reaction(&self.chat, self.id(), emoji)
             .await
     }
 
     /// Mark this message as read.
     pub async fn mark_as_read(&self) -> Result<()> {
-        self.client
-            .mark_as_read(self.chat.clone(), &[self.id()])
-            .await
+        self.client.mark_as_read(&self.chat, &[self.id()]).await
     }
 }

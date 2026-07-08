@@ -410,7 +410,7 @@ impl Client {
     ) -> Result<()> {
         let chat = chat.into();
         for msg_id in message_ids {
-            self.revoke_message(chat.clone(), msg_id, RevokeType::Sender)
+            self.revoke_message(&chat, msg_id, RevokeType::Sender)
                 .await?;
         }
         Ok(())

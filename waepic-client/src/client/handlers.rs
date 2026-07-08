@@ -149,7 +149,7 @@ async fn decrypt_e2e_message(
     from_jid: &wacore_binary::Jid,
     msg_id: &str,
     msg_type: &str,
-    timestamp: chrono::DateTime<chrono::Utc>,
+    timestamp: DateTime<Utc>,
     client: &Client,
 ) -> Result<Option<Update>> {
     let categorized = categorize_enc_nodes(enc_children);
@@ -1249,6 +1249,8 @@ fn handle_edge_routing_child(child: &Node, client: &Client) {
 
 #[cfg(test)]
 mod tests {
+    use crate::update;
+
     use super::*;
     use std::sync::Arc;
     use wacore_binary::{Jid, builder::NodeBuilder};
@@ -1322,7 +1324,7 @@ mod tests {
         assert!(
             matches!(
                 update,
-                Update::TemporaryBan(crate::update::TemporaryBan {
+                Update::TemporaryBan(update::TemporaryBan {
                     code: 402,
                     expire: 86400
                 })
