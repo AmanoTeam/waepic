@@ -218,16 +218,18 @@ impl Client {
     /// For newsletters, sends plaintext. For DMs and groups, encrypts via
     /// the Signal protocol using wacore's `prepare_dm_stanza` and
     /// `prepare_group_stanza`.
-    #[tracing::instrument(skip(self, chat))]
-    pub async fn send_message<C: Into<Chat>>(
+    #[tracing::instrument(skip(self, chat, message))]
+    pub async fn send_message<C: Into<Chat>, M: Into<InputMessage>>(
         &self,
         chat: C,
-        message: InputMessage,
+        message: M,
     ) -> Result<Message> {
         let chat = chat.into();
+        let msg = message.into();
+
         let jid = chat.jid().clone();
         let msg_id = generate_message_id();
-        let proto = input_to_proto(&message);
+        let proto = input_to_proto(&msg);
 
         // Newsletters are plaintext channels - keep the existing path.
         if chat.is_newsletter() {
@@ -378,17 +380,19 @@ impl Client {
     ///
     /// Sends a protocol message of type `MessageEdit` referencing the original
     /// message and carrying the replacement text content.
-    #[tracing::instrument(skip(self, chat))]
-    pub async fn edit_message<C: Into<Chat>>(
+    #[tracing::instrument(skip(self, chat, new_text))]
+    pub async fn edit_message<C: Into<Chat>, M: Into<InputMessage>>(
         &self,
         chat: C,
         message_id: &str,
-        new_text: InputMessage,
+        new_text: M,
     ) -> Result<()> {
         let chat = chat.into();
+        let input_msg = new_text.into();
+
         let jid = chat.jid().clone();
         let new_msg_id = generate_message_id();
-        let new_content = input_to_proto(&new_text);
+        let new_content = input_to_proto(&input_msg);
         let timestamp_ms = Utc::now().timestamp_millis();
 
         let proto = build_edit_proto(&jid, message_id, &new_content, timestamp_ms);
