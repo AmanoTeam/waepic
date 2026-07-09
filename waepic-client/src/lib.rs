@@ -64,6 +64,9 @@ pub use client::{
 };
 /// Re-export of the client configuration type.
 pub use config::ClientConfiguration;
+/// Re-export of media download types.
+#[cfg(feature = "download")]
+pub use download::DownloadParams;
 /// Re-export of all error types.
 pub use error::{AuthError, ClientError, IqError, SendError};
 /// Re-export of message types.
@@ -72,9 +75,6 @@ pub use message::{InputMedia, InputMessage, Message, MessageInfo};
 pub use peer::{Chat, Group, Jid, JidExt, Newsletter, OtherChat, Server, User};
 /// Re-export of the update event enum.
 pub use update::Update;
-/// Re-export of media download types.
-#[cfg(feature = "download")]
-pub use download::DownloadParams;
 
 /// Convenient [`Result`] alias for client operations.
 pub type Result<T> = std::result::Result<T, ClientError>;

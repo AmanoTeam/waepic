@@ -20,10 +20,7 @@ pub mod updates;
 
 use std::{
     fmt,
-    sync::{
-        Arc,
-        atomic::AtomicBool,
-    },
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use async_lock::{Mutex, RwLock};

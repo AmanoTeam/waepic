@@ -1,7 +1,7 @@
 //! Client configuration: device properties, reconnect behavior, WebSocket URL.
 
-use waproto::whatsapp::device_props::PlatformType;
 use waepic_connection::ConnectionConfig;
+use waproto::whatsapp::device_props::PlatformType;
 
 /// Configuration for a WhatsApp client.
 #[derive(Clone, Debug, Default)]
@@ -79,7 +79,10 @@ mod tests {
         let config = ClientConfiguration::default();
 
         assert!(config.connection.auto_reconnect);
-        assert_eq!(config.connection.keepalive_interval, Duration::from_secs(20));
+        assert_eq!(
+            config.connection.keepalive_interval,
+            Duration::from_secs(20)
+        );
         assert_eq!(config.connection.max_reconnect_attempts, 10);
     }
 
