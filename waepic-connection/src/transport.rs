@@ -135,7 +135,9 @@ async fn read_pump<S>(
         }
     }
 
-    let _ = tx.send(TransportEvent::Disconnected(DisconnectReason::Unknown)).await;
+    let _ = tx
+        .send(TransportEvent::Disconnected(DisconnectReason::Unknown))
+        .await;
 }
 
 /// Wrap a WebSocket stream into a [`Transport`] and event receiver pair.
@@ -195,10 +197,10 @@ impl TransportFactory for WebSocketTransportFactory {
     async fn create_transport(
         &self,
     ) -> Result<(Arc<dyn Transport>, Receiver<TransportEvent>), anyhow::Error> {
-        use async_tungstenite::tungstenite::client::IntoClientRequest;
-
         #[cfg(feature = "tokio")]
         {
+            use async_tungstenite::tungstenite::client::IntoClientRequest;
+
             let request = self
                 .url
                 .as_str()
@@ -214,11 +216,12 @@ impl TransportFactory for WebSocketTransportFactory {
             Ok(from_websocket(ws))
         }
 
-        #[cfg(not(feature = "tokio"))]
+        #[cfg(feature = "smol")]
         {
             use std::net::ToSocketAddrs;
 
             use async_net::TcpStream;
+            use async_tungstenite::tungstenite::client::IntoClientRequest;
 
             let request = self
                 .url

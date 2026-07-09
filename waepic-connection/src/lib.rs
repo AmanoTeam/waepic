@@ -24,6 +24,9 @@
     clippy::needless_pass_by_value
 )]
 
+#[cfg(not(any(feature = "tokio", feature = "smol")))]
+compile_error!("no async runtime was enabled, you must choose one of: tokio, smol");
+
 /// Connection lifecycle: WebSocket transport, Noise handshake, read loop,
 /// keepalive, and auto-reconnect.
 pub mod connection;
