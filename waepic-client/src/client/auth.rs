@@ -4,10 +4,7 @@
 //! 1. `companion_hello` - client sends encrypted ephemeral key, server returns pairing ref
 //! 2. `companion_finish` - after phone confirms, client performs DH and sends key bundle
 
-use std::sync::{
-    Arc,
-    atomic::Ordering,
-};
+use std::sync::{Arc, atomic::Ordering};
 
 use anyhow::anyhow;
 use rand::rngs::StdRng;
@@ -213,6 +210,15 @@ impl Client {
                         if client::pair::is_pair_success_node(&node) {
                             tracing::debug!("received pair-success for pair code flow");
 
+                            // Set the flag before handle_pair_success to
+                            // suppress ConnectFailure(515) and
+                            // Connected/Disconnected during the post-pair
+                            // reconnect window. The server drops the
+                            // connection with error 515 ~600ms after
+                            // pair-success, while handle_pair_success takes
+                            // ~5s to complete.
+                            post_pair_reconnect.store(true, Ordering::Release);
+
                             let dev = device.read().await.clone();
                             match client::pair::handle_pair_success(
                                 &handle, &session, &dev, &node, &config,
@@ -221,15 +227,13 @@ impl Client {
                             {
                                 Ok(()) => {
                                     tracing::info!("pair code pairing completed successfully");
-                                    // Signal the update stream to suppress
-                                    // Connected/Disconnected during the
-                                    // post-pair reconnect window.
-                                    post_pair_reconnect
-                                        .store(true, Ordering::Release);
                                     return;
                                 }
                                 Err(e) => {
                                     tracing::error!("pair code pair-success handling failed: {e}");
+                                    // Reset flag on failure so the update
+                                    // stream resumes normal event handling.
+                                    post_pair_reconnect.store(false, Ordering::Release);
                                     return;
                                 }
                             }

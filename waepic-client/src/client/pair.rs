@@ -222,21 +222,26 @@ async fn run_qr_pairing(
                         if is_pair_success_node(&node) {
                             tracing::debug!("received pair-success node");
 
+                            // Set the flag before handle_pair_success to
+                            // suppress ConnectFailure(515) and
+                            // Connected/Disconnected during the post-pair
+                            // reconnect window. The server drops the
+                            // connection ~600ms after pair-success, while
+                            // handle_pair_success takes ~5s to complete.
+                            post_pair_reconnect.store(true, Ordering::Release);
+
                             match handle_pair_success(&handle, &session, &device, &node, &config)
                                 .await
                             {
                                 Ok(()) => {
-                                    // Signal the update stream to suppress
-                                    // Connected/Disconnected during the
-                                    // post-pair reconnect window (server
-                                    // sends error 515 to force reconnect).
-                                    post_pair_reconnect.store(true, Ordering::Release);
-
                                     let _ = tx.send(PairEvent::Success).await;
                                     return Ok(());
                                 }
                                 Err(e) => {
                                     tracing::error!("pair success handling failed: {e}");
+                                    // Reset flag on failure so the update
+                                    // stream resumes normal event handling.
+                                    post_pair_reconnect.store(false, Ordering::Release);
                                     let _ = tx.send(PairEvent::Error(e)).await;
 
                                     return Ok(());

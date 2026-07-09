@@ -4,10 +4,7 @@
 //! the WhatsApp connection - messages, connection state changes, receipts,
 //! and presence updates all flow through this stream.
 
-use std::{
-    future::Future,
-    sync::atomic::Ordering,
-};
+use std::{future::Future, sync::atomic::Ordering};
 
 use wacore::iq::usync::DeviceListSpec;
 use wacore_binary::builder::NodeBuilder;
@@ -147,10 +144,7 @@ async fn run_update_stream(
                         // reconnect after pairing - this is expected and
                         // should not be surfaced to the app.
                         if matches!(update, Update::ConnectFailure(_))
-                            && client
-                                .inner
-                                .post_pair_reconnect
-                                .load(Ordering::Acquire)
+                            && client.inner.post_pair_reconnect.load(Ordering::Acquire)
                         {
                             tracing::debug!("ignoring ConnectFailure during post-pair reconnect");
                             continue;
@@ -168,16 +162,20 @@ async fn run_update_stream(
                 }
             }
             RawEvent::Connected => {
-                if client
-                    .inner
-                    .post_pair_reconnect
-                    .load(Ordering::Acquire)
-                {
+                if client.inner.post_pair_reconnect.load(Ordering::Acquire) {
                     tracing::debug!("ignoring Connected during post-pair reconnect window");
 
                     // Run post-connect init silently (prekeys, device sync,
                     // presence) without emitting Connected to the app.
                     run_post_connect_init(&client).await;
+
+                    // Reset the flag after the first successful post-pair
+                    // reconnect so subsequent real disconnects are not
+                    // suppressed.
+                    client
+                        .inner
+                        .post_pair_reconnect
+                        .store(false, Ordering::Release);
                     continue;
                 }
 
@@ -198,11 +196,7 @@ async fn run_update_stream(
                 run_post_connect_init(&client).await;
             }
             RawEvent::Disconnected => {
-                if client
-                    .inner
-                    .post_pair_reconnect
-                    .load(Ordering::Acquire)
-                {
+                if client.inner.post_pair_reconnect.load(Ordering::Acquire) {
                     tracing::debug!("ignoring Disconnected during post-pair reconnect window");
                     continue;
                 }
