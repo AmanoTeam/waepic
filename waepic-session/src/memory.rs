@@ -9,9 +9,9 @@ use async_lock::RwLock;
 use async_trait::async_trait;
 use bytes::Bytes;
 use wacore::{
-    appstate::hash::HashState,
+    appstate::{hash::HashState, processor::AppStateMutationMAC},
     store::{
-        InMemoryBackend,
+        Device, InMemoryBackend,
         error::Result as StoreResult,
         traits::{
             AppStateSyncKey, AppSyncStore, DeviceListRecord, DeviceStore, LidPnMappingEntry,
@@ -151,11 +151,15 @@ impl MsgSecretStore for MemorySession {
         sender: &str,
         msg_id: &str,
     ) -> StoreResult<Option<(Vec<u8>, i64)>> {
-        self.backend.get_msg_secret_with_ts(chat, sender, msg_id).await
+        self.backend
+            .get_msg_secret_with_ts(chat, sender, msg_id)
+            .await
     }
 
     async fn delete_expired_msg_secrets(&self, cutoff_timestamp: i64) -> StoreResult<u32> {
-        self.backend.delete_expired_msg_secrets(cutoff_timestamp).await
+        self.backend
+            .delete_expired_msg_secrets(cutoff_timestamp)
+            .await
     }
 }
 
@@ -181,7 +185,7 @@ impl AppSyncStore for MemorySession {
         &self,
         name: &str,
         version: u64,
-        mutations: &[wacore::appstate::processor::AppStateMutationMAC],
+        mutations: &[AppStateMutationMAC],
     ) -> StoreResult<()> {
         self.backend
             .put_mutation_macs(name, version, mutations)
@@ -303,7 +307,11 @@ impl ProtocolStore for MemorySession {
         self.backend.get_all_tc_token_jids().await
     }
 
-    async fn delete_expired_tc_tokens(&self, token_cutoff: i64, sender_cutoff: i64) -> StoreResult<u32> {
+    async fn delete_expired_tc_tokens(
+        &self,
+        token_cutoff: i64,
+        sender_cutoff: i64,
+    ) -> StoreResult<u32> {
         self.backend
             .delete_expired_tc_tokens(token_cutoff, sender_cutoff)
             .await
@@ -337,11 +345,11 @@ impl ProtocolStore for MemorySession {
 
 #[async_trait]
 impl DeviceStore for MemorySession {
-    async fn save(&self, device: &wacore::store::Device) -> StoreResult<()> {
+    async fn save(&self, device: &Device) -> StoreResult<()> {
         self.backend.save(device).await
     }
 
-    async fn load(&self) -> StoreResult<Option<wacore::store::Device>> {
+    async fn load(&self) -> StoreResult<Option<Device>> {
         self.backend.load().await
     }
 

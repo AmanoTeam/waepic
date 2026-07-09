@@ -13,9 +13,9 @@ use anyhow::anyhow;
 use wacore::{
     download::{
         DownloadRequest, DownloadUtils, Downloadable, MediaConnection as CoreMediaConnection,
-        MediaDecryption,
+        MediaDecryption, MediaHost,
     },
-    iq::mediaconn::MediaConnSpec,
+    iq::mediaconn::{MediaConnHost, MediaConnSpec},
 };
 
 use crate::{Client, error::ClientError};
@@ -32,7 +32,7 @@ pub(crate) struct MediaConn {
     pub(crate) auth: String,
     pub(crate) ttl: u64,
     pub(crate) auth_ttl: Option<u64>,
-    pub(crate) hosts: Vec<wacore::iq::mediaconn::MediaConnHost>,
+    pub(crate) hosts: Vec<MediaConnHost>,
     pub(crate) fetched_at: Instant,
 }
 
@@ -50,7 +50,7 @@ impl From<&MediaConn> for CoreMediaConnection {
             hosts: conn
                 .hosts
                 .iter()
-                .map(|h| wacore::download::MediaHost {
+                .map(|h| MediaHost {
                     hostname: h.hostname.clone(),
                 })
                 .collect(),
@@ -75,7 +75,7 @@ pub struct DownloadParams {
     /// Declared plaintext file length in bytes.
     pub file_length: u64,
     /// Media type (image, video, audio, etc.).
-    pub media_type: wacore::download::MediaType,
+    pub media_type: MediaType,
 }
 
 impl DownloadParams {
@@ -87,7 +87,7 @@ impl DownloadParams {
         file_sha256: &[u8],
         file_enc_sha256: &[u8],
         file_length: u64,
-        media_type: wacore::download::MediaType,
+        media_type: MediaType,
     ) -> Self {
         Self {
             direct_path: direct_path.as_ref().to_path_buf(),
@@ -105,7 +105,7 @@ impl DownloadParams {
         direct_path: P,
         file_sha256: &[u8],
         file_length: u64,
-        media_type: wacore::download::MediaType,
+        media_type: MediaType,
     ) -> Self {
         Self {
             direct_path: direct_path.as_ref().to_path_buf(),
@@ -139,7 +139,7 @@ impl Downloadable for DownloadParams {
         Some(self.file_length)
     }
 
-    fn app_info(&self) -> wacore::download::MediaType {
+    fn app_info(&self) -> MediaType {
         self.media_type
     }
 }

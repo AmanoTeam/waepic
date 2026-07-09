@@ -1251,11 +1251,13 @@ fn handle_edge_routing_child(child: &Node, client: &Client) {
 
 #[cfg(test)]
 mod tests {
-    use crate::update;
+    use std::sync::Arc;
+
+    use wacore::request::InfoQueryType;
+    use wacore_binary::{Jid, builder::NodeBuilder};
 
     use super::*;
-    use std::sync::Arc;
-    use wacore_binary::{Jid, builder::NodeBuilder};
+    use crate::update;
 
     fn make_test_client() -> Client {
         use crate::ClientConfiguration;
@@ -1593,7 +1595,7 @@ mod tests {
         assert_eq!(iq.namespace, "w:sync:app:state");
         assert_eq!(iq.to, SERVER_JID.parse::<Jid>().unwrap());
         match iq.query_type {
-            wacore::request::InfoQueryType::Set => {}
+            InfoQueryType::Set => {}
             other => panic!("expected Set, got {other:?}"),
         }
 

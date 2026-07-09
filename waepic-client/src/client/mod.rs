@@ -24,8 +24,10 @@ use async_lock::{Mutex, RwLock};
 use buffa::message::Message as _;
 use chrono::Utc;
 use wacore::{
-    iq::devices::RemoveCompanionDeviceSpec, libsignal::store::record_helpers as wacore_record,
-    pair_code::PairCodeState, store::SignalStoreCache,
+    iq::devices::RemoveCompanionDeviceSpec,
+    libsignal::store::record_helpers as wacore_record,
+    pair_code::PairCodeState,
+    store::{Device, SignalStoreCache},
 };
 use wacore_binary::{Jid, JidExt, Server};
 use waepic_connection::{Connection, ConnectionHandle, ConnectionRunner, RawEvent};
@@ -59,7 +61,7 @@ pub(crate) struct ClientInner {
     pub(crate) config: ClientConfiguration,
     pub(crate) raw_tx: Option<async_broadcast::Sender<RawEvent>>,
     /// Device state (identity key, registration ID, prekeys, etc.).
-    pub(crate) device: Arc<RwLock<wacore::store::Device>>,
+    pub(crate) device: Arc<RwLock<Device>>,
     /// Signal protocol state cache (sessions, identities, sender keys).
     #[allow(dead_code)]
     pub(crate) signal_cache: Arc<SignalStoreCache>,
@@ -86,7 +88,7 @@ impl Client {
                 session,
                 config,
                 raw_tx: None,
-                device: Arc::new(RwLock::new(wacore::store::Device::new())),
+                device: Arc::new(RwLock::new(Device::new())),
                 signal_cache: Arc::new(SignalStoreCache::new()),
                 pair_code_state: Mutex::new(PairCodeState::Idle),
                 #[cfg(feature = "download")]
@@ -115,7 +117,7 @@ impl Client {
                 session,
                 config,
                 raw_tx: Some(event_tx),
-                device: Arc::new(RwLock::new(wacore::store::Device::new())),
+                device: Arc::new(RwLock::new(Device::new())),
                 signal_cache: Arc::new(SignalStoreCache::new()),
                 pair_code_state: Mutex::new(PairCodeState::Idle),
                 #[cfg(feature = "download")]

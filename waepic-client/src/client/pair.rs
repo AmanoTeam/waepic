@@ -12,11 +12,13 @@ use futures_util::future::{Either, select};
 use rand::{SeedableRng, rngs::StdRng};
 use wacore::{
     companion_reg::companion_web_client_type_for_props,
-    iq::passive::PassiveModeSpec,
-    iq::prekeys::{PreKeyCountSpec, PreKeyUploadSpec},
-    libsignal::protocol::KeyPair,
-    libsignal::store::record_helpers as wacore_record,
+    iq::{
+        passive::PassiveModeSpec,
+        prekeys::{PreKeyCountSpec, PreKeyUploadSpec},
+    },
+    libsignal::{protocol::KeyPair, store::record_helpers as wacore_record},
     pair::{DeviceState, PairUtils},
+    store::Device,
 };
 use wacore_binary::{Attrs, Jid, Node, NodeContent, NodeValue, SERVER_JID};
 
@@ -113,7 +115,7 @@ async fn run_qr_pairing(
     handle: ConnectionHandle,
     session: Arc<dyn Session>,
     config: ClientConfiguration,
-    device: wacore::store::Device,
+    device: Device,
     tx: async_channel::Sender<PairEvent>,
     mut raw_rx: async_broadcast::Receiver<RawEvent>,
 ) -> Result<()> {
@@ -297,7 +299,7 @@ pub(crate) fn is_pair_success_node(node: &Node) -> bool {
 pub(crate) async fn handle_pair_success(
     handle: &ConnectionHandle,
     session: &Arc<dyn Session>,
-    device: &wacore::store::Device,
+    device: &Device,
     node: &Node,
     _config: &ClientConfiguration,
 ) -> Result<()> {
@@ -440,7 +442,7 @@ async fn is_already_paired(session: &Arc<dyn Session>) -> bool {
 pub(crate) async fn upload_prekeys_if_needed(
     handle: &ConnectionHandle,
     session: &Arc<dyn Session>,
-    device: &wacore::store::Device,
+    device: &Device,
 ) -> Result<()> {
     let count_spec = PreKeyCountSpec::new();
     let count_response = handle.send_iq(count_spec).await.map_err(|e| {

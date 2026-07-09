@@ -22,10 +22,10 @@ use futures_channel::oneshot;
 use futures_timer::Delay;
 use futures_util::future::{Either, select};
 use wacore::{
-    framing::FrameDecoder,
+    framing::{self, FrameDecoder},
     handshake::{XxHandshakeState, build_handshake_header},
     net::{Transport, TransportEvent, TransportFactory},
-    store::traits::Backend,
+    store::{Device, traits::Backend},
 };
 use wacore_binary::{
     Node, OwnedNodeRef, SERVER_JID,
@@ -127,7 +127,7 @@ pub(crate) async fn connect_once(fields: &RunnerFields) -> Result<()> {
 /// Perform the Noise XX handshake with the WhatsApp server.
 #[tracing::instrument(skip(device, transport, transport_events))]
 async fn perform_xx_handshake(
-    device: &wacore::store::Device,
+    device: &Device,
     transport: &Arc<dyn Transport>,
     transport_events: &mut Receiver<TransportEvent>,
 ) -> Result<NoiseSocket> {
@@ -143,7 +143,7 @@ async fn perform_xx_handshake(
         .map_err(|e| ConnectionError::Protocol(format!("build client hello failed: {e}")))?;
 
     let (header, _used_edge_routing) = build_handshake_header(device.edge_routing_info.as_deref());
-    let framed = wacore::framing::encode_frame(&client_hello, Some(&header))
+    let framed = framing::encode_frame(&client_hello, Some(&header))
         .map_err(|e| ConnectionError::Protocol(format!("frame encode failed: {e}")))?;
     transport
         .send(Bytes::from(framed))
@@ -164,7 +164,7 @@ async fn perform_xx_handshake(
         .read_server_hello_and_build_client_finish(&resp_frame)
         .map_err(|e| ConnectionError::Protocol(format!("handshake server hello failed: {e}")))?;
 
-    let framed = wacore::framing::encode_frame(&client_finish, None)
+    let framed = framing::encode_frame(&client_finish, None)
         .map_err(|e| ConnectionError::Protocol(format!("frame encode failed: {e}")))?;
     transport
         .send(Bytes::from(framed))

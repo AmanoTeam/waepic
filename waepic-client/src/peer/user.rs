@@ -1,3 +1,4 @@
+use wacore::iq::contacts::ProfilePictureSpec;
 use wacore_binary::Jid;
 
 use crate::{Client, ClientError, InputMessage, Message, Result};
@@ -64,16 +65,12 @@ impl User {
     /// Returns `Ok(Some(url))` if a picture exists, `Ok(None)` if no picture
     /// is set or the request indicates no picture is available.
     pub async fn profile_picture_url(&self) -> Result<Option<String>> {
-        let spec = wacore::iq::contacts::ProfilePictureSpec::full(&self.jid);
-        let response = self
-            .client
-            .inner
-            .handle
-            .send_iq(spec)
-            .await
-            .map_err(|e| {
+        let spec = ProfilePictureSpec::full(&self.jid);
+        let response =
+            self.client.inner.handle.send_iq(spec).await.map_err(|e| {
                 ClientError::Internal(format!("profile picture request failed: {e}"))
             })?;
+
         Ok(response.map(|p| p.url))
     }
 }

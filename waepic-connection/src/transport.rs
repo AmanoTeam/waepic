@@ -264,6 +264,8 @@ impl TransportFactory for WebSocketTransportFactory {
 
 #[cfg(test)]
 mod tests {
+    use wacore::net::WHATSAPP_WEB_WS_URL;
+
     use super::*;
 
     #[compio::test]
@@ -273,7 +275,7 @@ mod tests {
             .with_max_level(tracing::Level::DEBUG)
             .try_init();
 
-        let factory = WebSocketTransportFactory::new(wacore::net::WHATSAPP_WEB_WS_URL);
+        let factory = WebSocketTransportFactory::new(WHATSAPP_WEB_WS_URL);
         let result = factory.create_transport().await;
         assert!(
             result.is_ok(),

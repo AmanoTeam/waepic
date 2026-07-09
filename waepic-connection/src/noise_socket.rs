@@ -7,7 +7,7 @@ use std::sync::{
 
 use async_lock::Mutex;
 use bytes::{Bytes, BytesMut};
-use wacore::noise::NoiseCipher;
+use wacore::{framing, net::Transport, noise::NoiseCipher};
 
 use crate::{Result, error::ConnectionError};
 
@@ -21,7 +21,7 @@ pub fn encrypt_and_frame(cipher: &NoiseCipher, counter: u32, plaintext: &[u8]) -
         .map_err(|e| ConnectionError::Encrypt(format!("encrypt failed: {e}")))?;
 
     let mut framed = BytesMut::new();
-    wacore::framing::encode_frame_into(&buffer, None, &mut framed)
+    framing::encode_frame_into(&buffer, None, &mut framed)
         .map_err(|e| ConnectionError::Protocol(format!("frame encode failed: {e}")))?;
 
     Ok(framed.freeze())
@@ -58,7 +58,7 @@ impl NoiseSocket {
     /// Encrypt and frame a plaintext payload for sending.
     pub async fn encrypt_and_send(
         &self,
-        transport: &Arc<dyn wacore::net::Transport>,
+        transport: &Arc<dyn Transport>,
         plaintext: Bytes,
     ) -> Result<()> {
         let mut counter_guard = self.write_counter.lock().await;
