@@ -3,7 +3,13 @@
 //! Provides `PairEvent`, `PairEventStream`, and the internal
 //! `run_qr_pairing` function that drives the full QR pairing flow.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use buffa::message::Message as _;
 use chrono::Utc;
@@ -99,9 +105,20 @@ impl Client {
         let handle = self.inner.handle.clone();
         let session = Arc::clone(&self.inner.session);
         let config = self.inner.config.clone();
+        let post_pair_reconnect = Arc::clone(&self.inner.post_pair_reconnect);
 
         async_global_executor::spawn(async move {
-            if let Err(e) = run_qr_pairing(handle, session, config, device, tx, raw_rx).await {
+            if let Err(e) = run_qr_pairing(
+                handle,
+                session,
+                config,
+                device,
+                tx,
+                raw_rx,
+                post_pair_reconnect,
+            )
+            .await
+            {
                 tracing::error!("qr pairing failed: {e:#}");
             }
         })
@@ -118,6 +135,7 @@ async fn run_qr_pairing(
     device: Device,
     tx: async_channel::Sender<PairEvent>,
     mut raw_rx: async_broadcast::Receiver<RawEvent>,
+    post_pair_reconnect: Arc<AtomicBool>,
 ) -> Result<()> {
     tracing::debug!("waiting for server-initiated pair-device iq");
 
@@ -208,6 +226,12 @@ async fn run_qr_pairing(
                                 .await
                             {
                                 Ok(()) => {
+                                    // Signal the update stream to suppress
+                                    // Connected/Disconnected during the
+                                    // post-pair reconnect window (server
+                                    // sends error 515 to force reconnect).
+                                    post_pair_reconnect.store(true, Ordering::Release);
+
                                     let _ = tx.send(PairEvent::Success).await;
                                     return Ok(());
                                 }

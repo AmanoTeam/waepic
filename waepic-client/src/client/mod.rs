@@ -18,7 +18,13 @@ pub mod signal_adapter;
 /// Update stream that converts raw connection events into high-level `Update` items.
 pub mod updates;
 
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::{
+        Arc,
+        atomic::AtomicBool,
+    },
+};
 
 use async_lock::{Mutex, RwLock};
 use buffa::message::Message as _;
@@ -67,6 +73,13 @@ pub(crate) struct ClientInner {
     pub(crate) signal_cache: Arc<SignalStoreCache>,
     /// Pair-code authentication state machine.
     pub(crate) pair_code_state: Mutex<PairCodeState>,
+    /// Set to `true` as soon as pair-success is received by the auth/pair
+    /// module. The update stream checks this flag to suppress
+    /// Connected/Disconnected/ConnectFailure events during the post-pair
+    /// reconnect window (server sends error 515 to force reconnect after
+    /// pairing). Using an `AtomicBool` lets the auth task signal the update
+    /// stream immediately, without waiting for the "success" node to arrive.
+    pub(crate) post_pair_reconnect: Arc<AtomicBool>,
     /// HTTP client for media downloads (requires `download` feature).
     #[cfg(feature = "download")]
     pub(crate) http_client: reqwest::Client,
@@ -91,6 +104,7 @@ impl Client {
                 device: Arc::new(RwLock::new(Device::new())),
                 signal_cache: Arc::new(SignalStoreCache::new()),
                 pair_code_state: Mutex::new(PairCodeState::Idle),
+                post_pair_reconnect: Arc::new(AtomicBool::new(false)),
                 #[cfg(feature = "download")]
                 http_client: reqwest::Client::builder()
                     .user_agent("waepic")
@@ -120,6 +134,7 @@ impl Client {
                 device: Arc::new(RwLock::new(Device::new())),
                 signal_cache: Arc::new(SignalStoreCache::new()),
                 pair_code_state: Mutex::new(PairCodeState::Idle),
+                post_pair_reconnect: Arc::new(AtomicBool::new(false)),
                 #[cfg(feature = "download")]
                 http_client: reqwest::Client::builder()
                     .user_agent("waepic")

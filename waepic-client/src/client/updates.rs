@@ -4,7 +4,10 @@
 //! the WhatsApp connection - messages, connection state changes, receipts,
 //! and presence updates all flow through this stream.
 
-use std::future::Future;
+use std::{
+    future::Future,
+    sync::atomic::Ordering,
+};
 
 use wacore::iq::usync::DeviceListSpec;
 use wacore_binary::builder::NodeBuilder;
@@ -139,6 +142,19 @@ async fn run_update_stream(
 
                 match result {
                     Ok(Some(update)) => {
+                        // Suppress ConnectFailure during post-pair reconnect
+                        // window. The server sends error 515 to force a
+                        // reconnect after pairing - this is expected and
+                        // should not be surfaced to the app.
+                        if matches!(update, Update::ConnectFailure(_))
+                            && client
+                                .inner
+                                .post_pair_reconnect
+                                .load(Ordering::Acquire)
+                        {
+                            tracing::debug!("ignoring ConnectFailure during post-pair reconnect");
+                            continue;
+                        }
                         let _ = tx.send(update).await;
                     }
                     Ok(None) => {
@@ -152,6 +168,19 @@ async fn run_update_stream(
                 }
             }
             RawEvent::Connected => {
+                if client
+                    .inner
+                    .post_pair_reconnect
+                    .load(Ordering::Acquire)
+                {
+                    tracing::debug!("ignoring Connected during post-pair reconnect window");
+
+                    // Run post-connect init silently (prekeys, device sync,
+                    // presence) without emitting Connected to the app.
+                    run_post_connect_init(&client).await;
+                    continue;
+                }
+
                 let _ = tx.send(Update::Connected).await;
 
                 // After reconnecting with stored credentials (post-pairing),
@@ -166,62 +195,18 @@ async fn run_update_stream(
                 // to force a reconnect, and after reconnect the Connected
                 // handler fires. We must reload from backend to see the
                 // fresh device state with pn set.
-                let backend = client.inner.session.clone();
-                match backend.load().await {
-                    Ok(Some(fresh_device)) => {
-                        // Update the in-memory RwLock with the fresh device
-                        *client.inner.device.write().await = fresh_device.clone();
-                        if fresh_device.pn.is_some() {
-                            // Upload prekeys if the server count is low
-                            if let Err(e) = upload_prekeys_if_needed(
-                                &client.inner.handle,
-                                &client.inner.session,
-                                &fresh_device,
-                            )
-                            .await
-                            {
-                                tracing::warn!("failed to upload prekeys after reconnect: {e}");
-                            }
-
-                            // Send active IQ to exit passive mode (backup for post_connect_init)
-                            if let Err(e) = send_active_iq(&client.inner.handle).await {
-                                tracing::warn!("failed to send active iq after reconnect: {e}");
-                            }
-
-                            // Sync our own device list so the server knows
-                            // about this companion device for DM fan-out.
-                            if let Some(pn) = &fresh_device.pn {
-                                let device_spec =
-                                    DeviceListSpec::new(vec![pn.clone()], "device_list_sync");
-                                if let Err(e) = client.inner.handle.send_iq(device_spec).await {
-                                    tracing::warn!("failed to sync device list: {e}");
-                                }
-                            }
-
-                            // Send presence available if push_name is set.
-                            // Skip if empty (matches WA Web guard).
-                            if !fresh_device.push_name.is_empty() {
-                                let presence_node = NodeBuilder::new("presence")
-                                    .attrs([
-                                        ("type", "available"),
-                                        ("name", fresh_device.push_name.as_str()),
-                                    ])
-                                    .build();
-                                if let Err(e) = client.inner.handle.send_node(presence_node).await {
-                                    tracing::warn!("failed to send presence available: {e}");
-                                }
-                            }
-                        }
-                    }
-                    Ok(None) => {
-                        tracing::debug!("no device stored in backend, skipping post-connect init");
-                    }
-                    Err(e) => {
-                        tracing::warn!("failed to load device from backend: {e}");
-                    }
-                }
+                run_post_connect_init(&client).await;
             }
             RawEvent::Disconnected => {
+                if client
+                    .inner
+                    .post_pair_reconnect
+                    .load(Ordering::Acquire)
+                {
+                    tracing::debug!("ignoring Disconnected during post-pair reconnect window");
+                    continue;
+                }
+
                 let _ = tx.send(Update::Disconnected).await;
             }
             RawEvent::Error(msg) => {
@@ -237,6 +222,65 @@ async fn run_update_stream(
             if let Err(e) = client.inner.signal_cache.flush(&*backend).await {
                 tracing::warn!("failed to flush signal cache: {e}");
             }
+        }
+    }
+}
+
+/// Reload device state and run post-connect init (prekeys, active iq,
+/// device sync, presence). Used both during normal Connected and during
+/// the post-pair reconnect window.
+async fn run_post_connect_init(client: &Client) {
+    let backend = client.inner.session.clone();
+    match backend.load().await {
+        Ok(Some(fresh_device)) => {
+            // Update the in-memory RwLock with the fresh device
+            *client.inner.device.write().await = fresh_device.clone();
+            if fresh_device.pn.is_some() {
+                // Upload prekeys if the server count is low
+                if let Err(e) = upload_prekeys_if_needed(
+                    &client.inner.handle,
+                    &client.inner.session,
+                    &fresh_device,
+                )
+                .await
+                {
+                    tracing::warn!("failed to upload prekeys after reconnect: {e}");
+                }
+
+                // Send active IQ to exit passive mode (backup for post_connect_init)
+                if let Err(e) = send_active_iq(&client.inner.handle).await {
+                    tracing::warn!("failed to send active iq after reconnect: {e}");
+                }
+
+                // Sync our own device list so the server knows
+                // about this companion device for DM fan-out.
+                if let Some(pn) = &fresh_device.pn {
+                    let device_spec = DeviceListSpec::new(vec![pn.clone()], "device_list_sync");
+                    if let Err(e) = client.inner.handle.send_iq(device_spec).await {
+                        tracing::warn!("failed to sync device list: {e}");
+                    }
+                }
+
+                // Send presence available if push_name is set.
+                // Skip if empty (matches WA Web guard).
+                if !fresh_device.push_name.is_empty() {
+                    let presence_node = NodeBuilder::new("presence")
+                        .attrs([
+                            ("type", "available"),
+                            ("name", fresh_device.push_name.as_str()),
+                        ])
+                        .build();
+                    if let Err(e) = client.inner.handle.send_node(presence_node).await {
+                        tracing::warn!("failed to send presence available: {e}");
+                    }
+                }
+            }
+        }
+        Ok(None) => {
+            tracing::debug!("no device stored in backend, skipping post-connect init");
+        }
+        Err(e) => {
+            tracing::warn!("failed to load device from backend: {e}");
         }
     }
 }

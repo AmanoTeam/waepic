@@ -4,6 +4,11 @@
 //! 1. `companion_hello` - client sends encrypted ephemeral key, server returns pairing ref
 //! 2. `companion_finish` - after phone confirms, client performs DH and sends key bundle
 
+use std::sync::{
+    Arc,
+    atomic::Ordering,
+};
+
 use anyhow::anyhow;
 use rand::rngs::StdRng;
 use wacore::{
@@ -197,6 +202,7 @@ impl Client {
         let session = self.inner.session.clone();
         let device = self.inner.device.clone();
         let config = self.inner.config.clone();
+        let post_pair_reconnect = Arc::clone(&self.inner.post_pair_reconnect);
 
         async_global_executor::spawn(async move {
             let mut raw_rx = raw_tx.as_ref().expect("raw_tx").new_receiver();
@@ -215,6 +221,11 @@ impl Client {
                             {
                                 Ok(()) => {
                                     tracing::info!("pair code pairing completed successfully");
+                                    // Signal the update stream to suppress
+                                    // Connected/Disconnected during the
+                                    // post-pair reconnect window.
+                                    post_pair_reconnect
+                                        .store(true, Ordering::Release);
                                     return;
                                 }
                                 Err(e) => {
