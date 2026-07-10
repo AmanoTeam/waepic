@@ -23,6 +23,8 @@ use std::fmt;
 /// Re-export of JID types and utilities from `wacore_binary`.
 pub use wacore_binary::{Jid, JidExt, Server};
 
+use crate::{ClientError, Result};
+
 /// The universal conversation target.
 #[derive(Clone, Debug)]
 pub enum Chat {
@@ -71,6 +73,25 @@ impl Chat {
     /// Whether this chat is a newsletter (channel).
     pub fn is_newsletter(&self) -> bool {
         matches!(self, Self::Newsletter(_))
+    }
+
+    /// Request history for this chat from the server.
+    ///
+    /// Sends a peer data operation request with `HistorySyncOnDemand`
+    /// type for this chat's JID.
+    pub async fn download_history(&self) -> Result<()> {
+        let client = match self {
+            Self::Group(g) => &g.client,
+            Self::Newsletter(_) => {
+                return Err(ClientError::Internal(
+                    "cannot download newsletter history".into(),
+                ));
+            }
+            Self::Other(o) => &o.client,
+            Self::User(u) => &u.client,
+        };
+
+        client.download_chat_history(self.jid().clone()).await
     }
 }
 

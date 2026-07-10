@@ -299,7 +299,7 @@ async fn decrypt_e2e_message(
                 );
                 let updates = process_history_sync_payload(
                     inline_payload,
-                    notif.sync_type.map(|v| v as i32),
+                    notif.sync_type,
                     notif.progress,
                     client,
                 );
@@ -355,7 +355,7 @@ async fn decrypt_e2e_message(
                         );
                         let updates = process_history_sync_payload(
                             &data,
-                            notif.sync_type.map(|v| v as i32),
+                            notif.sync_type,
                             notif.progress,
                             client,
                         );
@@ -926,7 +926,7 @@ fn build_history_sync_receipt_node(msg_id: &str) -> Node {
 /// [`Update::HistorySyncCompleted`] marker.
 fn process_history_sync_payload(
     compressed: &[u8],
-    sync_type: Option<i32>,
+    sync_type: Option<waproto::whatsapp::message::HistorySyncType>,
     progress: Option<u32>,
     client: &Client,
 ) -> Vec<Update> {

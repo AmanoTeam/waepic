@@ -212,6 +212,18 @@ fn build_read_receipt_node(to: &Jid, message_ids: &[&str]) -> Node {
         .build()
 }
 
+fn build_pdo_proto(pdo: wa::message::PeerDataOperationRequestMessage) -> wa::Message {
+    wa::Message {
+        protocol_message: wa::message::ProtocolMessage {
+            peer_data_operation_request_message: pdo.into(),
+            r#type: Some(wa::message::protocol_message::Type::PeerDataOperationRequestMessage),
+            ..Default::default()
+        }
+        .into(),
+        ..Default::default()
+    }
+}
+
 impl Client {
     /// Send a message to a chat.
     ///
@@ -473,6 +485,75 @@ impl Client {
 
             self.inner.handle.send_node(node).await?;
         }
+
+        Ok(())
+    }
+
+    /// Request a full history sync from the server.
+    ///
+    /// Sends a peer data operation request with `FullHistorySyncOnDemand`
+    /// type to our own primary JID. The server will respond with history
+    /// sync notifications delivered as encrypted `<message>` nodes.
+    #[tracing::instrument(skip(self))]
+    pub async fn download_full_history(&self) -> Result<()> {
+        let device = self.inner.device.read().await;
+        let pn = device.pn.clone().ok_or(ClientError::NotLoggedIn)?;
+        drop(device);
+
+        let request_id = generate_message_id();
+        let pdo = wa::message::PeerDataOperationRequestMessage {
+            full_history_sync_on_demand_request:
+                wa::message::peer_data_operation_request_message::FullHistorySyncOnDemandRequest {
+                    request_metadata: wa::message::FullHistorySyncOnDemandRequestMetadata {
+                        request_id: Some(request_id),
+                        ..Default::default()
+                    }
+                    .into(),
+                    ..Default::default()
+                }
+                .into(),
+            peer_data_operation_request_type: Some(
+                wa::message::PeerDataOperationRequestType::FullHistorySyncOnDemand,
+            ),
+            ..Default::default()
+        };
+
+        let proto = build_pdo_proto(pdo);
+        let msg_id = generate_message_id();
+        let node = build_message_node(&pn, &msg_id, &proto);
+        self.inner.handle.send_node(node).await?;
+
+        Ok(())
+    }
+
+    /// Request history for a specific chat from the server.
+    ///
+    /// Sends a peer data operation request with `HistorySyncOnDemand`
+    /// type for the given chat JID.
+    #[tracing::instrument(skip(self))]
+    pub async fn download_chat_history(&self, chat_jid: Jid) -> Result<()> {
+        let device = self.inner.device.read().await;
+        let pn = device.pn.clone().ok_or(ClientError::NotLoggedIn)?;
+        drop(device);
+
+        let pdo = wa::message::PeerDataOperationRequestMessage {
+            history_sync_on_demand_request: Some(
+                wa::message::peer_data_operation_request_message::HistorySyncOnDemandRequest {
+                    chat_jid: Some(chat_jid.to_string()),
+                    ..Default::default()
+                },
+            )
+            .into(),
+            peer_data_operation_request_type: Some(
+                wa::message::PeerDataOperationRequestType::HistorySyncOnDemand,
+            ),
+            ..Default::default()
+        };
+
+        let proto = build_pdo_proto(pdo);
+        let msg_id = generate_message_id();
+        let node = build_message_node(&pn, &msg_id, &proto);
+        self.inner.handle.send_node(node).await?;
 
         Ok(())
     }
