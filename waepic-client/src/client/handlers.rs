@@ -46,23 +46,22 @@ use crate::{
     },
 };
 
-/// Process an incoming protocol node and produce an [`Update`] if applicable.
+/// Process an incoming protocol node and produce [`Update`]s if applicable.
 ///
 /// For `<message>` nodes with `<enc>` children, performs Signal E2E decryption
 /// via the wacore libsignal protocol. Falls back to `<plaintext>` child decoding
 /// for nodes without encryption (e.g., our own sent messages echoed back).
 ///
-/// Returns `Ok(None)` for nodes that are not message stanzas or cannot be
+/// Returns an empty vec for nodes that are not message stanzas or cannot be
 /// decoded (the caller should continue processing other nodes).
-#[allow(dead_code)] // FIXME: call at UpdateStream dispatch
-pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Result<Option<Update>> {
+pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Result<Vec<Update>> {
     if node.tag != "message" {
-        return Ok(None);
+        return Ok(vec![]);
     }
 
     let Some(from_jid) = node.attrs.get("from").and_then(NodeValue::to_jid) else {
         tracing::warn!("message node missing valid 'from' attribute, skipping");
-        return Ok(None);
+        return Ok(vec![]);
     };
 
     let msg_id = node
@@ -111,14 +110,14 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
     let proto_bytes = extract_plaintext_content(node);
     let Some(proto_bytes) = proto_bytes else {
         tracing::warn!("message node has no decodable content (id={msg_id}), skipping");
-        return Ok(None);
+        return Ok(vec![]);
     };
 
     let wa_msg = match wa::Message::decode_from_slice(proto_bytes.as_slice()) {
         Ok(msg) => msg,
         Err(e) => {
             tracing::warn!("failed to decode message protobuf (id={msg_id}): {e}");
-            return Ok(None);
+            return Ok(vec![]);
         }
     };
 
@@ -137,13 +136,16 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
     let chat = client.chat(from_jid);
     let message = Message::new(wa_msg, info, client.clone(), chat);
 
-    Ok(Some(Update::NewMessage(message)))
+    Ok(vec![Update::NewMessage(message)])
 }
 
 /// Decrypt an E2E-encrypted message with `<enc>` children.
 ///
 /// Classifies enc nodes into session (pkmsg/msg) and group (skmsg) buckets,
 /// decrypts each, decodes the protobuf, and returns a `NewMessage` update.
+///
+/// Also detects history sync notifications embedded in protocol messages
+/// (modern WhatsApp delivery) and returns history sync updates if found.
 #[allow(dead_code)]
 async fn decrypt_e2e_message(
     node: &Node,
@@ -153,7 +155,7 @@ async fn decrypt_e2e_message(
     msg_type: &str,
     timestamp: DateTime<Utc>,
     client: &Client,
-) -> Result<Option<Update>> {
+) -> Result<Vec<Update>> {
     let categorized = categorize_enc_nodes(enc_children);
 
     let backend = client.inner.session.clone();
@@ -236,10 +238,9 @@ async fn decrypt_e2e_message(
         }
     }
 
-    // If no decryption succeeded, return None
     let Some(plaintext) = plaintext else {
         tracing::warn!("all decryption attempts failed for message (id={msg_id}), skipping");
-        return Ok(None);
+        return Ok(vec![]);
     };
 
     // Decode the plaintext into a wa::Message
@@ -253,12 +254,43 @@ async fn decrypt_e2e_message(
         Ok(msg) => msg,
         Err(e) => {
             tracing::warn!("failed to decode decrypted plaintext (id={msg_id}): {e}");
-            return Ok(None);
+            return Ok(vec![]);
         }
     };
 
     // Check if this is a sender key distribution message only (no user content)
     wa_msg = unwrap_device_sent(wa_msg);
+
+    // Modern WhatsApp delivers history sync notifications inside encrypted
+    // <message> nodes via protocol_message.history_sync_notification.
+    let proto_msg = &wa_msg.protocol_message;
+    if proto_msg.is_set() {
+        let notif = &proto_msg.history_sync_notification;
+        if notif.is_set() {
+            tracing::info!(
+                id = %msg_id,
+                has_inline_payload = notif.initial_hist_bootstrap_inline_payload.is_some(),
+                has_direct_path = notif.direct_path.is_some(),
+                has_media_key = notif.media_key.is_some(),
+                "protocol_message has history_sync_notification"
+            );
+            if let Some(ref inline_payload) = notif.initial_hist_bootstrap_inline_payload {
+                tracing::info!("detected history sync notification with inline payload (id={msg_id})");
+                return Ok(process_history_sync_payload(inline_payload, client));
+            }
+            // TODO: download from CDN if direct_path + media_key present but no inline payload
+            tracing::warn!("history sync notification has no inline payload (id={msg_id}), may need CDN download");
+        } else {
+            if let Some(ref msg_type) = proto_msg.r#type {
+                tracing::debug!(
+                    id = %msg_id,
+                    proto_type = ?msg_type,
+                    "protocol message (no history sync)"
+                );
+            }
+        }
+    }
+
     if is_sender_key_distribution_only(&mut wa_msg) {
         if let Some(skdm_bytes) = &wa_msg
             .sender_key_distribution_message
@@ -288,7 +320,7 @@ async fn decrypt_e2e_message(
             }
         }
 
-        return Ok(None);
+        return Ok(vec![]);
     }
 
     let info = MessageInfo {
@@ -306,7 +338,7 @@ async fn decrypt_e2e_message(
     let chat = client.chat(from_jid.clone());
     let message = Message::new(wa_msg, info, client.clone(), chat);
 
-    Ok(Some(Update::NewMessage(message)))
+    Ok(vec![Update::NewMessage(message)])
 }
 
 /// Extract protobuf bytes from a `<plaintext>` child node, falling back to
@@ -748,20 +780,30 @@ const MAX_DECOMPRESSED: u64 = 64 * 1024 * 1024;
 /// Process an incoming history sync notification and produce [`Update::HistorySync`]
 /// chunks followed by [`Update::HistorySyncCompleted`].
 ///
-/// History sync data arrives in two forms:
+/// History sync data arrives in multiple forms:
+/// - Encrypted `<message>` node with `protocol_message.history_sync_notification`
+///   whose `initialHistBootstrapInlinePayload` carries the zlib-compressed blob
+///   (modern WhatsApp delivery).
 /// - `<notification type="history_sync_notification">` with a protobuf-encoded
-///   `HistorySyncNotification` whose `initialHistBootstrapInlinePayload` field
-///   carries the zlib-compressed [`wa::HistorySync`] blob.
+///   `HistorySyncNotification` (legacy form, may still arrive).
 /// - `<ib>` node with a `<history_sync>` child whose content is the compressed blob.
 ///
 /// Returns a [`Vec<Update>`] because a single history sync blob may produce
 /// multiple chunks (one per conversation batch) plus a completion marker.
-#[allow(dead_code)]
 pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Vec<Update> {
     let Some(compressed) = extract_history_sync_payload(node) else {
         return Vec::new();
     };
-    let decompressed = match zlib_pool::decompress_zlib_pooled(&compressed, MAX_DECOMPRESSED) {
+    process_history_sync_payload(&compressed, client)
+}
+
+/// Core history sync processing from a zlib-compressed payload.
+///
+/// Decompresses, decodes the [`wa::HistorySync`] protobuf, and converts each
+/// conversation batch into [`Update::HistorySync`] chunks, followed by an
+/// [`Update::HistorySyncCompleted`] marker.
+fn process_history_sync_payload(compressed: &[u8], client: &Client) -> Vec<Update> {
+    let decompressed = match zlib_pool::decompress_zlib_pooled(compressed, MAX_DECOMPRESSED) {
         Ok(data) => data,
         Err(e) => {
             tracing::warn!("failed to decompress history sync payload: {e}");

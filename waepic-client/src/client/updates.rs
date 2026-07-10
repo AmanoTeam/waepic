@@ -124,8 +124,30 @@ async fn run_update_stream(
                     continue;
                 }
 
+                // Message nodes can produce multiple updates (e.g., history
+                // sync notifications embedded in encrypted messages), so
+                // handle them separately from the single-update dispatch.
+                if tag == "message" {
+                    match process_incoming_node(&node, &client).await {
+                        Ok(updates) => {
+                            for update in updates {
+                                if matches!(update, Update::ConnectFailure(_))
+                                    && client.inner.post_pair_reconnect.load(Ordering::Acquire)
+                                {
+                                    tracing::debug!("ignoring ConnectFailure during post-pair reconnect");
+                                    continue;
+                                }
+                                let _ = tx.send(update).await;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("error processing incoming node: {e}");
+                        }
+                    }
+                    continue;
+                }
+
                 let result = match tag {
-                    "message" => process_incoming_node(&node, &client).await,
                     "receipt" => Ok(handle_receipt(&node, &client)),
                     "presence" => Ok(handle_presence(&node, &client)),
                     "chatstate" => Ok(handle_chatstate(&node, &client)),
@@ -150,30 +172,20 @@ async fn run_update_stream(
                             continue;
                         }
 
-                        // When the server sends a bare <failure> (no error
-                        // code), it means our companion device was removed.
-                        // Clear the stored device automatically so the next
-                        // connection attempt starts fresh instead of
-                        // reconnecting with stale credentials and looping.
+                        // Auto-clear stored device when the server sends a
+                        // bare <failure> (companion removed). This prevents
+                        // the infinite connect/reject loop that occurs when
+                        // reconnecting with a stale device after server-side
+                        // removal.
                         if matches!(update, Update::LoggedOut) {
-                            tracing::info!(
-                                "server sent <failure> (device removed),  clearing stored device from backend"
-                            );
                             if let Err(e) = client.inner.session.clear_device().await {
-                                tracing::warn!(
-                                    "failed to clear device after \
-                                     server-initiated logout: {e}"
-                                );
+                                tracing::warn!("failed to clear device on logout: {e}");
                             }
                         }
 
                         let _ = tx.send(update).await;
                     }
-                    Ok(None) => {
-                        // Node was not a recognized stanza or couldn't be
-                        // decoded; this is normal for non-event nodes
-                        // (iq responses, etc.).
-                    }
+                    Ok(None) => {}
                     Err(e) => {
                         tracing::warn!("error processing incoming node: {e}");
                     }
