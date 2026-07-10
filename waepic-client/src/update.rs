@@ -212,6 +212,10 @@ pub enum ChatPresenceState {
 pub struct HistorySyncChunk {
     /// Conversations included in this chunk.
     pub conversations: Vec<SyncedConversation>,
+    /// Sync progress percentage (0-100), if reported by the server.
+    pub progress: Option<u32>,
+    /// The type of history sync (e.g. `InitialBootstrap`, `Full`, `OnDemand`).
+    pub sync_type: Option<i32>,
 }
 
 /// A single synced conversation from a history-sync chunk.

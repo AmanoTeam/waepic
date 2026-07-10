@@ -94,7 +94,7 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
         })
         .unwrap_or_default();
     if !enc_children.is_empty() {
-        return decrypt_e2e_message(
+        let updates = decrypt_e2e_message(
             node,
             &enc_children,
             &from_jid,
@@ -103,7 +103,26 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
             timestamp,
             client,
         )
-        .await;
+        .await?;
+
+        // Send delivery receipt for regular messages (not history sync, which
+        // uses its own receipt type inside decrypt_e2e_message).
+        let is_history_sync = updates.iter().any(|u| matches!(u, Update::HistorySync(_)));
+        if !updates.is_empty() && !is_history_sync {
+            let timestamp_str = timestamp.timestamp().to_string();
+            let receipt = NodeBuilder::new("receipt")
+                .attr("to", &from_jid)
+                .attr("type", "delivery")
+                .attr("id", &msg_id)
+                .attr("t", &timestamp_str)
+                .build();
+
+            if let Err(e) = client.inner.handle.send_node(receipt).await {
+                tracing::warn!("failed to send delivery receipt (id={msg_id}): {e}");
+            }
+        }
+
+        return Ok(updates);
     }
 
     // Fallback: plaintext content (our own sent messages echoed back)
@@ -278,7 +297,21 @@ async fn decrypt_e2e_message(
                 tracing::info!(
                     "detected history sync notification with inline payload (id={msg_id})"
                 );
-                return Ok(process_history_sync_payload(inline_payload, client));
+                let updates = process_history_sync_payload(
+                    inline_payload,
+                    notif.sync_type.map(|v| v as i32),
+                    notif.progress,
+                    client,
+                );
+
+                if client.inner.config.auto_history_sync {
+                    let receipt = build_history_sync_receipt_node(msg_id);
+                    if let Err(e) = client.inner.handle.send_node(receipt).await {
+                        tracing::warn!("failed to send history sync receipt (id={msg_id}): {e}");
+                    }
+                }
+
+                return Ok(updates);
             }
 
             #[cfg(feature = "download")]
@@ -320,7 +353,23 @@ async fn decrypt_e2e_message(
                             size = data.len(),
                             "history sync downloaded from CDN, processing"
                         );
-                        return Ok(process_history_sync_payload(&data, client));
+                        let updates = process_history_sync_payload(
+                            &data,
+                            notif.sync_type.map(|v| v as i32),
+                            notif.progress,
+                            client,
+                        );
+
+                        if client.inner.config.auto_history_sync {
+                            let receipt = build_history_sync_receipt_node(msg_id);
+                            if let Err(e) = client.inner.handle.send_node(receipt).await {
+                                tracing::warn!(
+                                    "failed to send history sync receipt (id={msg_id}): {e}"
+                                );
+                            }
+                        }
+
+                        return Ok(updates);
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -852,7 +901,22 @@ pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Vec<Update> {
     let Some(compressed) = extract_history_sync_payload(node) else {
         return Vec::new();
     };
-    process_history_sync_payload(&compressed, client)
+    process_history_sync_payload(&compressed, None, None, client)
+}
+
+/// Build a `<receipt type="history_sync">` node.
+///
+/// After processing a history-sync notification the client must ACK it so the
+/// server sends the next chunk.
+fn build_history_sync_receipt_node(msg_id: &str) -> Node {
+    let timestamp = Utc::now().timestamp().to_string();
+
+    NodeBuilder::new("receipt")
+        .attr("to", SERVER_JID)
+        .attr("type", "history_sync")
+        .attr("id", msg_id)
+        .attr("t", &timestamp)
+        .build()
 }
 
 /// Core history sync processing from a zlib-compressed payload.
@@ -860,7 +924,12 @@ pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Vec<Update> {
 /// Decompresses, decodes the [`wa::HistorySync`] protobuf, and converts each
 /// conversation batch into [`Update::HistorySync`] chunks, followed by an
 /// [`Update::HistorySyncCompleted`] marker.
-fn process_history_sync_payload(compressed: &[u8], client: &Client) -> Vec<Update> {
+fn process_history_sync_payload(
+    compressed: &[u8],
+    sync_type: Option<i32>,
+    progress: Option<u32>,
+    client: &Client,
+) -> Vec<Update> {
     let decompressed = match zlib_pool::decompress_zlib_pooled(compressed, MAX_DECOMPRESSED) {
         Ok(data) => data,
         Err(e) => {
@@ -940,6 +1009,8 @@ fn process_history_sync_payload(compressed: &[u8], client: &Client) -> Vec<Updat
     if !synced_conversations.is_empty() {
         updates.push(Update::HistorySync(HistorySyncChunk {
             conversations: synced_conversations,
+            progress,
+            sync_type,
         }));
     }
 

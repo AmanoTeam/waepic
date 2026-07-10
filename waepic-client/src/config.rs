@@ -4,12 +4,27 @@ use waepic_connection::ConnectionConfig;
 use waproto::whatsapp::device_props::PlatformType;
 
 /// Configuration for a WhatsApp client.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct ClientConfiguration {
+    /// Automatically continue history sync by sending receipts after each
+    /// chunk. When `false`, only the initial bootstrap is received and the
+    /// caller must use `download_full_history` / `download_chat_history` for
+    /// on-demand requests.
+    pub auto_history_sync: bool,
     /// Device properties sent during the WhatsApp handshake.
     pub device: DeviceProps,
     /// Connection-layer configuration (WebSocket URL, reconnect, keepalive).
     pub connection: ConnectionConfig,
+}
+
+impl Default for ClientConfiguration {
+    fn default() -> Self {
+        Self {
+            auto_history_sync: true,
+            connection: ConnectionConfig::default(),
+            device: DeviceProps::default(),
+        }
+    }
 }
 
 /// Device properties sent during WhatsApp handshake.
