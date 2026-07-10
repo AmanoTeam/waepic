@@ -13,6 +13,7 @@ waepic-session.workspace = true
 [features]
 default = ["simd"]
 
+download = ["waepic-client/download"]
 simd = ["waepic-client/simd", "waepic-connection/simd", "waepic-session/simd"]
 sqlite-storage = ["waepic-session/sqlite-storage"]
 

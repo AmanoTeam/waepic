@@ -172,14 +172,14 @@ async fn run_update_stream(
                             continue;
                         }
 
-                        // Auto-clear stored device when the server sends a
-                        // bare <failure> (companion removed). This prevents
-                        // the infinite connect/reject loop that occurs when
-                        // reconnecting with a stale device after server-side
-                        // removal.
+                        // When the server sends a bare <failure> (no error
+                        // code), it means the companion device was removed
+                        // server-side. Clear the stored device credentials
+                        // so the next connection starts fresh instead of
+                        // reconnecting with stale credentials.
                         if matches!(update, Update::LoggedOut) {
                             if let Err(e) = client.inner.session.clear_device().await {
-                                tracing::warn!("failed to clear device on logout: {e}");
+                                tracing::warn!("failed to auto-clear device on logout: {e}");
                             }
                         }
 

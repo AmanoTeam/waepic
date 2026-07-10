@@ -13,7 +13,7 @@ use anyhow::anyhow;
 use wacore::{
     download::{
         DownloadRequest, DownloadUtils, Downloadable, MediaConnection as CoreMediaConnection,
-        MediaDecryption, MediaHost,
+        MediaDecryption, MediaHost, MediaType,
     },
     iq::mediaconn::{MediaConnHost, MediaConnSpec},
 };

@@ -275,11 +275,69 @@ async fn decrypt_e2e_message(
                 "protocol_message has history_sync_notification"
             );
             if let Some(ref inline_payload) = notif.initial_hist_bootstrap_inline_payload {
-                tracing::info!("detected history sync notification with inline payload (id={msg_id})");
+                tracing::info!(
+                    "detected history sync notification with inline payload (id={msg_id})"
+                );
                 return Ok(process_history_sync_payload(inline_payload, client));
             }
-            // TODO: download from CDN if direct_path + media_key present but no inline payload
-            tracing::warn!("history sync notification has no inline payload (id={msg_id}), may need CDN download");
+
+            #[cfg(feature = "download")]
+            {
+                use crate::DownloadParams;
+                use wacore::download::MediaType;
+
+                let Some(direct_path) = notif.direct_path.as_deref() else {
+                    tracing::warn!("history sync notification has no direct_path (id={msg_id})");
+                    return Ok(vec![]);
+                };
+                let Some(media_key) = notif.media_key.as_deref() else {
+                    tracing::warn!("history sync notification has no media_key (id={msg_id})");
+                    return Ok(vec![]);
+                };
+                let file_sha256 = notif.file_sha256.as_deref().unwrap_or_default();
+                let file_enc_sha256 = notif.file_enc_sha256.as_deref().unwrap_or_default();
+                let file_length = notif.file_length.unwrap_or(0);
+
+                let params = DownloadParams::encrypted(
+                    direct_path,
+                    media_key,
+                    file_sha256,
+                    file_enc_sha256,
+                    file_length,
+                    MediaType::History,
+                );
+
+                tracing::info!(
+                    id = %msg_id,
+                    direct_path,
+                    file_length,
+                    "downloading history sync from CDN"
+                );
+                match client.download(&params).await {
+                    Ok(data) => {
+                        tracing::info!(
+                            id = %msg_id,
+                            size = data.len(),
+                            "history sync downloaded from CDN, processing"
+                        );
+                        return Ok(process_history_sync_payload(&data, client));
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "failed to download history sync from CDN (id={msg_id}): {e}"
+                        );
+                        return Ok(vec![]);
+                    }
+                }
+            }
+            #[cfg(not(feature = "download"))]
+            {
+                tracing::warn!(
+                    "history sync notification requires CDN download but \
+                     the `download` feature is not enabled (id={msg_id})"
+                );
+                return Ok(vec![]);
+            }
         } else {
             if let Some(ref msg_type) = proto_msg.r#type {
                 tracing::debug!(
