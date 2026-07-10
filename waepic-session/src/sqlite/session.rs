@@ -97,4 +97,13 @@ impl Session for SqliteSession {
             Ok(count > 0)
         })
     }
+
+    fn clear_device(&self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
+        Box::pin(async move {
+            let conn = self.conn.lock().expect("sqlite lock poisoned");
+            conn.execute("DELETE FROM device", [])?;
+
+            Ok(())
+        })
+    }
 }

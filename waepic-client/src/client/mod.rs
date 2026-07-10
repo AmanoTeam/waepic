@@ -145,6 +145,17 @@ impl Client {
         (client, runner)
     }
 
+    /// Remove the stored device from the session backend.
+    ///
+    /// Forces the next connection to create a fresh device and re-pair.
+    pub async fn clear_device(&self) -> Result<()> {
+        self.inner
+            .session
+            .clear_device()
+            .await
+            .map_err(|e| ClientError::Internal(format!("failed to clear device: {e}")))
+    }
+
     /// Load device state from the session backend, or keep the fresh device if none exists.
     ///
     /// Must be called after `connect()` and before any E2E operations.

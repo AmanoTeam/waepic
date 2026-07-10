@@ -32,4 +32,13 @@ pub trait Session: Backend {
 
     /// Whether the given JID is a known contact.
     fn is_contact(&self, jid: &Jid) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + '_>>;
+
+    /// Clear the stored device from the session.
+    ///
+    /// Called when the server removes the companion (e.g. user logged out from
+    /// phone). Forces the next connection to create a fresh device and show
+    /// QR/pairing flow instead of reconnecting with a stale device.
+    fn clear_device(&self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
+        Box::pin(async { Ok(()) })
+    }
 }

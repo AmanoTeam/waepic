@@ -149,6 +149,24 @@ async fn run_update_stream(
                             tracing::debug!("ignoring ConnectFailure during post-pair reconnect");
                             continue;
                         }
+
+                        // When the server sends a bare <failure> (no error
+                        // code), it means our companion device was removed.
+                        // Clear the stored device automatically so the next
+                        // connection attempt starts fresh instead of
+                        // reconnecting with stale credentials and looping.
+                        if matches!(update, Update::LoggedOut) {
+                            tracing::info!(
+                                "server sent <failure> (device removed),  clearing stored device from backend"
+                            );
+                            if let Err(e) = client.inner.session.clear_device().await {
+                                tracing::warn!(
+                                    "failed to clear device after \
+                                     server-initiated logout: {e}"
+                                );
+                            }
+                        }
+
                         let _ = tx.send(update).await;
                     }
                     Ok(None) => {
