@@ -14,17 +14,17 @@ waepic-session = { path = "waepic-session" }
 
 wacore = {
   git = "https://github.com/oxidezap/whatsapp-rust",
-  rev = "bda9bb",
+  rev = "3a6ef9",
   default-features = false
 }
 wacore-binary = {
   git = "https://github.com/oxidezap/whatsapp-rust",
-  rev = "bda9bb",
+  rev = "3a6ef9",
   default-features = false
 }
 waproto = {
   git = "https://github.com/oxidezap/whatsapp-rust",
-  rev = "bda9bb",
+  rev = "3a6ef9",
 }
 
 anyhow = "1"
