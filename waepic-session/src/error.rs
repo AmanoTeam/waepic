@@ -14,4 +14,8 @@ pub enum SessionError {
     /// An internal session error.
     #[error("internal error: {0}")]
     Internal(String),
+    /// A SQLite error occurred during storage operations.
+    #[cfg(feature = "sqlite-storage")]
+    #[error("SQLite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
 }

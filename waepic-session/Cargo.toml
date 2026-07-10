@@ -12,6 +12,8 @@ wacore-binary.workspace = true
 async-lock.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
+rusqlite = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 
 [dev-dependencies]
@@ -21,3 +23,4 @@ compio = { workspace = true, features = ["macros"] }
 default = []
 
 simd = ["wacore/simd"]
+sqlite-storage = ["dep:rusqlite", "dep:serde_json"]

@@ -14,6 +14,7 @@ waepic-session.workspace = true
 default = ["simd"]
 
 simd = ["waepic-client/simd", "waepic-connection/simd", "waepic-session/simd"]
+sqlite-storage = ["waepic-session/sqlite-storage"]
 
 # Async runtime
 smol = ["waepic-client/smol", "waepic-connection/smol"]
