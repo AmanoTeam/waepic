@@ -117,7 +117,7 @@ async fn run_update_stream(
                     || (tag == "ib" && node.get_optional_child("history_sync").is_some());
 
                 if is_history_sync {
-                    let updates = handle_history_sync(&node, &client);
+                    let updates = handle_history_sync(&node, &client).await;
                     for update in updates {
                         let _ = tx.send(update).await;
                     }
@@ -134,7 +134,9 @@ async fn run_update_stream(
                                 if matches!(update, Update::ConnectFailure(_))
                                     && client.inner.post_pair_reconnect.load(Ordering::Acquire)
                                 {
-                                    tracing::debug!("ignoring ConnectFailure during post-pair reconnect");
+                                    tracing::debug!(
+                                        "ignoring ConnectFailure during post-pair reconnect"
+                                    );
                                     continue;
                                 }
                                 let _ = tx.send(update).await;
@@ -177,10 +179,10 @@ async fn run_update_stream(
                         // server-side. Clear the stored device credentials
                         // so the next connection starts fresh instead of
                         // reconnecting with stale credentials.
-                        if matches!(update, Update::LoggedOut) {
-                            if let Err(e) = client.inner.session.clear_device().await {
-                                tracing::warn!("failed to auto-clear device on logout: {e}");
-                            }
+                        if matches!(update, Update::LoggedOut)
+                            && let Err(e) = client.inner.session.clear_device().await
+                        {
+                            tracing::warn!("failed to auto-clear device on logout: {e}");
                         }
 
                         let _ = tx.send(update).await;

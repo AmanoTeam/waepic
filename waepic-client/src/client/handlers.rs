@@ -286,13 +286,6 @@ async fn decrypt_e2e_message(
     if proto_msg.is_set() {
         let notif = &proto_msg.history_sync_notification;
         if notif.is_set() {
-            tracing::info!(
-                id = %msg_id,
-                has_inline_payload = notif.initial_hist_bootstrap_inline_payload.is_some(),
-                has_direct_path = notif.direct_path.is_some(),
-                has_media_key = notif.media_key.is_some(),
-                "protocol_message has history_sync_notification"
-            );
             if let Some(ref inline_payload) = notif.initial_hist_bootstrap_inline_payload {
                 tracing::info!(
                     "detected history sync notification with inline payload (id={msg_id})"
@@ -305,9 +298,16 @@ async fn decrypt_e2e_message(
                 );
 
                 if client.inner.config.auto_history_sync {
-                    let receipt = build_history_sync_receipt_node(msg_id);
-                    if let Err(e) = client.inner.handle.send_node(receipt).await {
-                        tracing::warn!("failed to send history sync receipt (id={msg_id}): {e}");
+                    let device = client.inner.device.read().await;
+                    if let Some(own_pn) = &device.pn {
+                        let receipt = build_history_sync_receipt_node(msg_id, own_pn);
+                        if let Err(e) = client.inner.handle.send_node(receipt).await {
+                            tracing::warn!(
+                                "failed to send history sync receipt (id={msg_id}): {e}"
+                            );
+                        }
+                    } else {
+                        tracing::warn!("cannot send history sync receipt: no own PN available");
                     }
                 }
 
@@ -361,10 +361,17 @@ async fn decrypt_e2e_message(
                         );
 
                         if client.inner.config.auto_history_sync {
-                            let receipt = build_history_sync_receipt_node(msg_id);
-                            if let Err(e) = client.inner.handle.send_node(receipt).await {
+                            let device = client.inner.device.read().await;
+                            if let Some(own_pn) = &device.pn {
+                                let receipt = build_history_sync_receipt_node(msg_id, own_pn);
+                                if let Err(e) = client.inner.handle.send_node(receipt).await {
+                                    tracing::warn!(
+                                        "failed to send history sync receipt (id={msg_id}): {e}"
+                                    );
+                                }
+                            } else {
                                 tracing::warn!(
-                                    "failed to send history sync receipt (id={msg_id}): {e}"
+                                    "cannot send history sync receipt: no own PN available"
                                 );
                             }
                         }
@@ -387,14 +394,12 @@ async fn decrypt_e2e_message(
                 );
                 return Ok(vec![]);
             }
-        } else {
-            if let Some(ref msg_type) = proto_msg.r#type {
-                tracing::debug!(
-                    id = %msg_id,
-                    proto_type = ?msg_type,
-                    "protocol message (no history sync)"
-                );
-            }
+        } else if let Some(ref msg_type) = proto_msg.r#type {
+            tracing::debug!(
+                id = %msg_id,
+                proto_type = ?msg_type,
+                "protocol message"
+            );
         }
     }
 
@@ -897,25 +902,42 @@ const MAX_DECOMPRESSED: u64 = 64 * 1024 * 1024;
 ///
 /// Returns a [`Vec<Update>`] because a single history sync blob may produce
 /// multiple chunks (one per conversation batch) plus a completion marker.
-pub(crate) fn handle_history_sync(node: &Node, client: &Client) -> Vec<Update> {
+pub(crate) async fn handle_history_sync(node: &Node, client: &Client) -> Vec<Update> {
     let Some(compressed) = extract_history_sync_payload(node) else {
         return Vec::new();
     };
-    process_history_sync_payload(&compressed, None, None, client)
+    let updates = process_history_sync_payload(&compressed, None, None, client);
+
+    // Send history sync receipt so the server sends the next chunk.
+    // This covers the legacy notification/ib paths - the encrypted <message>
+    // path handles its own receipt in decrypt_e2e_message.
+    let msg_id = node.attrs.get("id").map(|v| v.as_str());
+    if client.inner.config.auto_history_sync
+        && let Some(msg_id) = msg_id
+    {
+        let device = client.inner.device.read().await;
+        if let Some(own_pn) = &device.pn {
+            let receipt = build_history_sync_receipt_node(&msg_id, own_pn);
+            if let Err(e) = client.inner.handle.send_node(receipt).await {
+                tracing::warn!("failed to send history sync receipt (id={msg_id}): {e}");
+            }
+        } else {
+            tracing::warn!("cannot send history sync receipt: no own PN available");
+        }
+    }
+
+    updates
 }
 
 /// Build a `<receipt type="history_sync">` node.
 ///
 /// After processing a history-sync notification the client must ACK it so the
 /// server sends the next chunk.
-fn build_history_sync_receipt_node(msg_id: &str) -> Node {
-    let timestamp = Utc::now().timestamp().to_string();
-
+fn build_history_sync_receipt_node(msg_id: &str, own_pn: &Jid) -> Node {
     NodeBuilder::new("receipt")
-        .attr("to", SERVER_JID)
-        .attr("type", "history_sync")
         .attr("id", msg_id)
-        .attr("t", &timestamp)
+        .attr("type", "hist_sync")
+        .attr("to", own_pn.to_non_ad_string())
         .build()
 }
 
