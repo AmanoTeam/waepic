@@ -46,6 +46,27 @@ use crate::{
     },
 };
 
+/// Result of processing an incoming protocol node.
+///
+/// Distinguishes regular updates from history sync payloads that should be
+/// processed in the background to avoid blocking the update stream with
+/// CPU-heavy decompression and protobuf decoding.
+pub(crate) enum IncomingNodeResult {
+    /// Regular updates ready to be sent to the application.
+    Updates(Vec<Update>),
+    /// A history sync payload that should be processed in the background.
+    BackgroundHistorySync {
+        /// Compressed history sync data (zlib-encoded protobuf).
+        compressed: Vec<u8>,
+        /// The message ID for sending the receipt.
+        msg_id: String,
+        /// Progress percentage reported by the server.
+        progress: Option<u32>,
+        /// The sync type from the notification.
+        sync_type: Option<waproto::whatsapp::message::HistorySyncType>,
+    },
+}
+
 /// Process an incoming protocol node and produce [`Update`]s if applicable.
 ///
 /// For `<message>` nodes with `<enc>` children, performs Signal E2E decryption
@@ -54,14 +75,17 @@ use crate::{
 ///
 /// Returns an empty vec for nodes that are not message stanzas or cannot be
 /// decoded (the caller should continue processing other nodes).
-pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Result<Vec<Update>> {
+pub(crate) async fn process_incoming_node(
+    node: &Node,
+    client: &Client,
+) -> Result<IncomingNodeResult> {
     if node.tag != "message" {
-        return Ok(vec![]);
+        return Ok(IncomingNodeResult::Updates(vec![]));
     }
 
     let Some(from_jid) = node.attrs.get("from").and_then(NodeValue::to_jid) else {
         tracing::warn!("message node missing valid 'from' attribute, skipping");
-        return Ok(vec![]);
+        return Ok(IncomingNodeResult::Updates(vec![]));
     };
 
     let msg_id = node
@@ -94,7 +118,7 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
         })
         .unwrap_or_default();
     if !enc_children.is_empty() {
-        let updates = decrypt_e2e_message(
+        let result = decrypt_e2e_message(
             node,
             &enc_children,
             &from_jid,
@@ -105,38 +129,39 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
         )
         .await?;
 
-        // Send delivery receipt for regular messages (not history sync, which
-        // uses its own receipt type inside decrypt_e2e_message).
-        let is_history_sync = updates.iter().any(|u| matches!(u, Update::HistorySync(_)));
-        if !updates.is_empty() && !is_history_sync {
-            let timestamp_str = timestamp.timestamp().to_string();
-            let receipt = NodeBuilder::new("receipt")
-                .attr("to", &from_jid)
-                .attr("type", "delivery")
-                .attr("id", &msg_id)
-                .attr("t", &timestamp_str)
-                .build();
+        // Send delivery receipt for regular messages
+        if let IncomingNodeResult::Updates(ref updates) = result {
+            let is_history_sync = updates.iter().any(|u| matches!(u, Update::HistorySync(_)));
+            if !updates.is_empty() && !is_history_sync {
+                let timestamp_str = timestamp.timestamp().to_string();
+                let receipt = NodeBuilder::new("receipt")
+                    .attr("to", &from_jid)
+                    .attr("type", "delivery")
+                    .attr("id", &msg_id)
+                    .attr("t", &timestamp_str)
+                    .build();
 
-            if let Err(e) = client.inner.handle.send_node(receipt).await {
-                tracing::warn!("failed to send delivery receipt (id={msg_id}): {e}");
+                if let Err(e) = client.inner.handle.send_node(receipt).await {
+                    tracing::warn!("failed to send delivery receipt (id={msg_id}): {e}");
+                }
             }
         }
 
-        return Ok(updates);
+        return Ok(result);
     }
 
     // Fallback: plaintext content (our own sent messages echoed back)
     let proto_bytes = extract_plaintext_content(node);
     let Some(proto_bytes) = proto_bytes else {
         tracing::warn!("message node has no decodable content (id={msg_id}), skipping");
-        return Ok(vec![]);
+        return Ok(IncomingNodeResult::Updates(vec![]));
     };
 
     let wa_msg = match wa::Message::decode_from_slice(proto_bytes.as_slice()) {
         Ok(msg) => msg,
         Err(e) => {
             tracing::warn!("failed to decode message protobuf (id={msg_id}): {e}");
-            return Ok(vec![]);
+            return Ok(IncomingNodeResult::Updates(vec![]));
         }
     };
 
@@ -155,7 +180,9 @@ pub(crate) async fn process_incoming_node(node: &Node, client: &Client) -> Resul
     let chat = client.chat(from_jid);
     let message = Message::new(wa_msg, info, client.clone(), chat);
 
-    Ok(vec![Update::NewMessage(message)])
+    Ok(IncomingNodeResult::Updates(vec![Update::NewMessage(
+        message,
+    )]))
 }
 
 /// Decrypt an E2E-encrypted message with `<enc>` children.
@@ -174,7 +201,7 @@ async fn decrypt_e2e_message(
     msg_type: &str,
     timestamp: DateTime<Utc>,
     client: &Client,
-) -> Result<Vec<Update>> {
+) -> Result<IncomingNodeResult> {
     let categorized = categorize_enc_nodes(enc_children);
 
     let backend = client.inner.session.clone();
@@ -259,7 +286,7 @@ async fn decrypt_e2e_message(
 
     let Some(plaintext) = plaintext else {
         tracing::warn!("all decryption attempts failed for message (id={msg_id}), skipping");
-        return Ok(vec![]);
+        return Ok(IncomingNodeResult::Updates(vec![]));
     };
 
     // Decode the plaintext into a wa::Message
@@ -273,7 +300,7 @@ async fn decrypt_e2e_message(
         Ok(msg) => msg,
         Err(e) => {
             tracing::warn!("failed to decode decrypted plaintext (id={msg_id}): {e}");
-            return Ok(vec![]);
+            return Ok(IncomingNodeResult::Updates(vec![]));
         }
     };
 
@@ -290,28 +317,12 @@ async fn decrypt_e2e_message(
                 tracing::info!(
                     "detected history sync notification with inline payload (id={msg_id})"
                 );
-                let updates = process_history_sync_payload(
-                    inline_payload,
-                    notif.sync_type,
-                    notif.progress,
-                    client,
-                );
-
-                if client.inner.config.auto_history_sync {
-                    let device = client.inner.device.read().await;
-                    if let Some(own_pn) = &device.pn {
-                        let receipt = build_history_sync_receipt_node(msg_id, own_pn);
-                        if let Err(e) = client.inner.handle.send_node(receipt).await {
-                            tracing::warn!(
-                                "failed to send history sync receipt (id={msg_id}): {e}"
-                            );
-                        }
-                    } else {
-                        tracing::warn!("cannot send history sync receipt: no own PN available");
-                    }
-                }
-
-                return Ok(updates);
+                return Ok(IncomingNodeResult::BackgroundHistorySync {
+                    compressed: inline_payload.clone(),
+                    msg_id: msg_id.to_string(),
+                    progress: notif.progress,
+                    sync_type: notif.sync_type,
+                });
             }
 
             #[cfg(feature = "download")]
@@ -321,11 +332,11 @@ async fn decrypt_e2e_message(
 
                 let Some(direct_path) = notif.direct_path.as_deref() else {
                     tracing::warn!("history sync notification has no direct_path (id={msg_id})");
-                    return Ok(vec![]);
+                    return Ok(IncomingNodeResult::Updates(vec![]));
                 };
                 let Some(media_key) = notif.media_key.as_deref() else {
                     tracing::warn!("history sync notification has no media_key (id={msg_id})");
-                    return Ok(vec![]);
+                    return Ok(IncomingNodeResult::Updates(vec![]));
                 };
                 let file_sha256 = notif.file_sha256.as_deref().unwrap_or_default();
                 let file_enc_sha256 = notif.file_enc_sha256.as_deref().unwrap_or_default();
@@ -351,38 +362,20 @@ async fn decrypt_e2e_message(
                         tracing::info!(
                             id = %msg_id,
                             size = data.len(),
-                            "history sync downloaded from CDN, processing"
+                            "history sync downloaded from CDN, scheduling background processing"
                         );
-                        let updates = process_history_sync_payload(
-                            &data,
-                            notif.sync_type,
-                            notif.progress,
-                            client,
-                        );
-
-                        if client.inner.config.auto_history_sync {
-                            let device = client.inner.device.read().await;
-                            if let Some(own_pn) = &device.pn {
-                                let receipt = build_history_sync_receipt_node(msg_id, own_pn);
-                                if let Err(e) = client.inner.handle.send_node(receipt).await {
-                                    tracing::warn!(
-                                        "failed to send history sync receipt (id={msg_id}): {e}"
-                                    );
-                                }
-                            } else {
-                                tracing::warn!(
-                                    "cannot send history sync receipt: no own PN available"
-                                );
-                            }
-                        }
-
-                        return Ok(updates);
+                        return Ok(IncomingNodeResult::BackgroundHistorySync {
+                            compressed: data,
+                            msg_id: msg_id.to_string(),
+                            progress: notif.progress,
+                            sync_type: notif.sync_type,
+                        });
                     }
                     Err(e) => {
                         tracing::warn!(
                             "failed to download history sync from CDN (id={msg_id}): {e}"
                         );
-                        return Ok(vec![]);
+                        return Ok(IncomingNodeResult::Updates(vec![]));
                     }
                 }
             }
@@ -392,7 +385,7 @@ async fn decrypt_e2e_message(
                     "history sync notification requires CDN download but \
                      the `download` feature is not enabled (id={msg_id})"
                 );
-                return Ok(vec![]);
+                return Ok(IncomingNodeResult::Updates(vec![]));
             }
         } else if let Some(ref msg_type) = proto_msg.r#type {
             tracing::debug!(
@@ -432,7 +425,7 @@ async fn decrypt_e2e_message(
             }
         }
 
-        return Ok(vec![]);
+        return Ok(IncomingNodeResult::Updates(vec![]));
     }
 
     let info = MessageInfo {
@@ -450,7 +443,9 @@ async fn decrypt_e2e_message(
     let chat = client.chat(from_jid.clone());
     let message = Message::new(wa_msg, info, client.clone(), chat);
 
-    Ok(vec![Update::NewMessage(message)])
+    Ok(IncomingNodeResult::Updates(vec![Update::NewMessage(
+        message,
+    )]))
 }
 
 /// Extract protobuf bytes from a `<plaintext>` child node, falling back to
@@ -933,7 +928,7 @@ pub(crate) async fn handle_history_sync(node: &Node, client: &Client) -> Vec<Upd
 ///
 /// After processing a history-sync notification the client must ACK it so the
 /// server sends the next chunk.
-fn build_history_sync_receipt_node(msg_id: &str, own_pn: &Jid) -> Node {
+pub(crate) fn build_history_sync_receipt_node(msg_id: &str, own_pn: &Jid) -> Node {
     NodeBuilder::new("receipt")
         .attr("id", msg_id)
         .attr("type", "hist_sync")
@@ -946,7 +941,7 @@ fn build_history_sync_receipt_node(msg_id: &str, own_pn: &Jid) -> Node {
 /// Decompresses, decodes the [`wa::HistorySync`] protobuf, and converts each
 /// conversation batch into [`Update::HistorySync`] chunks, followed by an
 /// [`Update::HistorySyncCompleted`] marker.
-fn process_history_sync_payload(
+pub(crate) fn process_history_sync_payload(
     compressed: &[u8],
     sync_type: Option<waproto::whatsapp::message::HistorySyncType>,
     progress: Option<u32>,

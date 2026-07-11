@@ -13,10 +13,11 @@ use waepic_connection::RawEvent;
 use crate::{
     Client, Result,
     client::{
+        self,
         handlers::{
-            handle_chatstate, handle_failure, handle_history_sync, handle_ib, handle_notification,
-            handle_pair_code, handle_presence, handle_receipt, handle_success,
-            process_incoming_node,
+            IncomingNodeResult, handle_chatstate, handle_failure, handle_history_sync, handle_ib,
+            handle_notification, handle_pair_code, handle_presence, handle_receipt, handle_success,
+            process_history_sync_payload, process_incoming_node,
         },
         pair::{send_active_iq, upload_prekeys_if_needed},
     },
@@ -117,10 +118,17 @@ async fn run_update_stream(
                     || (tag == "ib" && node.get_optional_child("history_sync").is_some());
 
                 if is_history_sync {
-                    let updates = handle_history_sync(&node, &client).await;
-                    for update in updates {
-                        let _ = tx.send(update).await;
-                    }
+                    let client_clone = client.clone();
+                    let tx_clone = tx.clone();
+                    let node_clone = node.clone();
+
+                    async_global_executor::spawn(async move {
+                        let updates = handle_history_sync(&node_clone, &client_clone).await;
+                        for update in updates {
+                            let _ = tx_clone.send(update).await;
+                        }
+                    })
+                    .detach();
                     continue;
                 }
 
@@ -129,7 +137,7 @@ async fn run_update_stream(
                 // handle them separately from the single-update dispatch.
                 if tag == "message" {
                     match process_incoming_node(&node, &client).await {
-                        Ok(updates) => {
+                        Ok(IncomingNodeResult::Updates(updates)) => {
                             for update in updates {
                                 if matches!(update, Update::ConnectFailure(_))
                                     && client.inner.post_pair_reconnect.load(Ordering::Acquire)
@@ -141,6 +149,51 @@ async fn run_update_stream(
                                 }
                                 let _ = tx.send(update).await;
                             }
+                        }
+                        Ok(IncomingNodeResult::BackgroundHistorySync {
+                            compressed,
+                            msg_id,
+                            progress,
+                            sync_type,
+                        }) => {
+                            let client_clone = client.clone();
+                            let tx_clone = tx.clone();
+
+                            async_global_executor::spawn(async move {
+                                let updates = process_history_sync_payload(
+                                    &compressed,
+                                    sync_type,
+                                    progress,
+                                    &client_clone,
+                                );
+                                for update in updates {
+                                    let _ = tx_clone.send(update).await;
+                                }
+
+                                if client_clone.inner.config.auto_history_sync {
+                                    let device = client_clone.inner.device.read().await;
+                                    if let Some(own_pn) = &device.pn {
+                                        let receipt =
+                                            client::handlers::build_history_sync_receipt_node(
+                                                &msg_id, own_pn,
+                                            );
+                                        if let Err(e) =
+                                            client_clone.inner.handle.send_node(receipt).await
+                                        {
+                                            tracing::warn!(
+                                                "failed to send history sync receipt \
+                                                 (id={msg_id}): {e}"
+                                            );
+                                        }
+                                    } else {
+                                        tracing::warn!(
+                                            "cannot send history sync receipt: \
+                                             no own PN available"
+                                        );
+                                    }
+                                }
+                            })
+                            .detach();
                         }
                         Err(e) => {
                             tracing::warn!("error processing incoming node: {e}");
