@@ -88,6 +88,15 @@ pub(crate) async fn process_incoming_node(
         return Ok(IncomingNodeResult::Updates(vec![]));
     };
 
+    if let Some(id) = node.attrs.get("id") {
+        let s = id.as_str();
+        tracing::debug!(
+            "received message node id={:?} from={}",
+            &s[..8.min(s.len())],
+            from_jid
+        );
+    }
+
     let msg_id = node
         .attrs
         .get("id")
@@ -1197,7 +1206,7 @@ pub(crate) fn handle_pair_code(node: &Node) -> Option<Update> {
 
 /// App state collection names that the server uses in `<dirty>` notifications
 /// and that we request via the `w:sync:app:state` IQ.
-const APP_STATE_COLLECTIONS: &[&str] = &[
+pub(crate) const APP_STATE_COLLECTIONS: &[&str] = &[
     "critical_block",
     "critical_unblock_low",
     "regular_low",
@@ -1216,8 +1225,7 @@ const APP_STATE_COLLECTIONS: &[&str] = &[
 ///   </sync>
 /// </iq>
 /// ```
-#[allow(dead_code)]
-struct AppStateSyncSpec {
+pub(crate) struct AppStateSyncSpec {
     /// Collection name (e.g. "critical_block", "regular_high").
     name: String,
     /// Current local version; 0 means "request a full snapshot".
@@ -1227,7 +1235,7 @@ struct AppStateSyncSpec {
 impl AppStateSyncSpec {
     /// Create a spec for the given collection name, starting from version 0
     /// (requesting a snapshot). This is the initial-sync path.
-    fn new(name: impl Into<String>) -> Self {
+    pub(crate) fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             version: 0,

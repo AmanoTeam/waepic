@@ -94,9 +94,7 @@ pub struct Connection {
 pub struct ConnectionRunner {
     cmd_rx: async_channel::Receiver<ConnectionCommand>,
     event_tx: async_broadcast::Sender<RawEvent>,
-    /// Keeps the broadcast channel alive so events aren't lost when no
-    /// external receivers exist yet. Never read from.
-    #[allow(dead_code)]
+    /// Dropped at the start of `run()` to prevent broadcast channel deadlock.
     event_rx: async_broadcast::Receiver<RawEvent>,
     backend: Arc<dyn Backend>,
     config: ConnectionConfig,
@@ -181,6 +179,13 @@ impl ConnectionRunner {
     /// the connection failed and auto-reconnect is disabled.
     #[tracing::instrument(skip(self))]
     pub async fn run(self) -> Result<()> {
+        // Drop the keep-alive receiver to prevent broadcast channel deadlock.
+        // event_rx is never consumed, so after 256 events the broadcast()
+        // call blocks the read loop permanently. new_receiver() (used by
+        // stream_updates) only sees messages sent AFTER creation, so
+        // event_rx cannot preserve early events anyway.
+        drop(self.event_rx);
+
         let fields = frame::RunnerFields {
             cmd_rx: self.cmd_rx,
             event_tx: self.event_tx,

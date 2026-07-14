@@ -6,7 +6,11 @@
 
 use std::{future::Future, sync::atomic::Ordering};
 
-use wacore::iq::usync::DeviceListSpec;
+use wacore::{
+    ib::{IbStanza, UnifiedSession},
+    iq::usync::DeviceListSpec,
+    protocol::ProtocolNode,
+};
 use wacore_binary::builder::NodeBuilder;
 use waepic_connection::RawEvent;
 
@@ -15,9 +19,10 @@ use crate::{
     client::{
         self,
         handlers::{
-            IncomingNodeResult, handle_chatstate, handle_failure, handle_history_sync, handle_ib,
-            handle_notification, handle_pair_code, handle_presence, handle_receipt, handle_success,
-            process_history_sync_payload, process_incoming_node,
+            APP_STATE_COLLECTIONS, AppStateSyncSpec, IncomingNodeResult, handle_chatstate,
+            handle_failure, handle_history_sync, handle_ib, handle_notification, handle_pair_code,
+            handle_presence, handle_receipt, handle_success, process_history_sync_payload,
+            process_incoming_node,
         },
         pair::{send_active_iq, upload_prekeys_if_needed},
     },
@@ -107,6 +112,7 @@ async fn run_update_stream(
             RawEvent::Node(node) => {
                 // Dispatch by node tag to the appropriate handler
                 let tag: &str = &node.tag;
+                tracing::debug!("update stream received node tag={tag}");
 
                 // History sync arrives as notification type="history_sync_notification"
                 // or as an <ib> node with a <history_sync> child.
@@ -315,6 +321,14 @@ async fn run_post_connect_init(client: &Client) {
             // Update the in-memory RwLock with the fresh device
             *client.inner.device.write().await = fresh_device.clone();
             if fresh_device.pn.is_some() {
+                // Send unified session node first - this is the first thing
+                // the server expects after connecting.
+                let session_id = UnifiedSession::calculate_id(0);
+                let node = IbStanza::unified_session(UnifiedSession::new(&session_id)).into_node();
+                if let Err(e) = client.inner.handle.send_node(node).await {
+                    tracing::warn!("failed to send unified session: {e}");
+                }
+
                 // Upload prekeys if the server count is low
                 if let Err(e) = upload_prekeys_if_needed(
                     &client.inner.handle,
@@ -351,6 +365,15 @@ async fn run_post_connect_init(client: &Client) {
                         .build();
                     if let Err(e) = client.inner.handle.send_node(presence_node).await {
                         tracing::warn!("failed to send presence available: {e}");
+                    }
+                }
+
+                // Request app state sync for all collections. The server
+                // requires this before routing <message> nodes to the client.
+                for &name in APP_STATE_COLLECTIONS {
+                    let spec = AppStateSyncSpec::new(name);
+                    if let Err(e) = client.inner.handle.send_iq(spec).await {
+                        tracing::debug!("app state sync request for {name} failed: {e}");
                     }
                 }
             }
